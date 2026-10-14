@@ -1,0 +1,58 @@
+{
+  "name": "ai-harness",
+  "owner": {
+    "name": "Bharath G P"
+  },
+  "plugins": [
+    {
+      "name": "agents-progress",
+      "source": "./plugins/agents-progress",
+      "description": "Live subagent panel and a running-agents band above the prompt"
+    },
+    {
+      "name": "assumption-tracker",
+      "source": "./plugins/assumption-tracker",
+      "description": "Lists the assumptions Claude made and sends fixes for the ones you mark wrong"
+    },
+    {
+      "name": "blast-radius",
+      "source": "./plugins/blast-radius",
+      "description": "Asks before destructive shell commands run"
+    },
+    {
+      "name": "cache-keeper",
+      "source": "./plugins/cache-keeper",
+      "description": "Cache countdown band, /keepwarm pings and a cold-send guard with cost estimate"
+    },
+    {
+      "name": "context-health",
+      "source": "./plugins/context-health",
+      "description": "Context fill band with warnings, /handoff and /autohandoff"
+    },
+    {
+      "name": "filetree",
+      "source": "./plugins/filetree",
+      "description": "File tree pane with git status and highlights for files Claude reads and writes"
+    },
+    {
+      "name": "next-steps",
+      "source": "./plugins/next-steps",
+      "description": "Suggests three next prompts after each turn"
+    },
+    {
+      "name": "reflect",
+      "source": "./plugins/reflect",
+      "description": "Spots corrections in your prompts and saves them as rules in CLAUDE.md"
+    },
+    {
+      "name": "secret-sentry",
+      "source": "./plugins/secret-sentry",
+      "description": "Blocks API keys and private keys from being written into files"
+    },
+    {
+      "name": "self-critique",
+      "source": "./plugins/self-critique",
+      "description": "/critique panel that reviews Claude's last answer, with one-click fixes"
+    }
+  ]
+}

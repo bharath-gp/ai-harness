@@ -1,0 +1,5 @@
+{
+  "name": "secret-sentry",
+  "version": "0.1.0",
+  "description": "Blocks API keys and private keys from being written into files"
+}
