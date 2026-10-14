@@ -129,11 +129,11 @@ export const item = (ui: any, e: any, o: { key: string; tone: Tone; title: strin
   if (isRich(ui, e)) {
     const { Svg } = ui
     const W = svgWidth(e.props.bodyColumns, 24)
-    const h = o.pct !== undefined ? 64 : 48
+    const rowH = o.pct !== undefined ? 64 : 48
     const ax = o.avatar ? 50 : 0 // room for the avatar tile
-    let body = `<rect class="c" x="0.5" y="0.5" width="${W - 1}" height="${h - 1}" rx="10"/>`
+    let body = `<rect class="c" x="0.5" y="0.5" width="${W - 1}" height="${rowH - 1}" rx="10"/>`
     if (o.avatar) body += `<rect x="10" y="8" width="34" height="34" rx="10" fill="${color}" fill-opacity=".18"/>` + text(27, 31, o.avatar, { size: 15, weight: 700, anchor: 'middle', fill: color })
-    else body += `<rect x="0.5" y="6" width="3.5" height="${h - 12}" rx="1.75" fill="${color}"/>${dot(20, 18, color, o.busy)}`
+    else body += `<rect x="0.5" y="6" width="3.5" height="${rowH - 12}" rx="1.75" fill="${color}"/>${dot(20, 18, color, o.busy)}`
     const tx = o.avatar ? ax + 8 : 32
     let right = W - 14
     if (o.chip) {
@@ -145,7 +145,7 @@ export const item = (ui: any, e: any, o: { key: string; tone: Tone; title: strin
     body += text(tx, 22, fit(o.title, right - tx - 8, 13), { size: 13, weight: 600 })
     if (o.sub) body += text(tx, 38, fit(o.sub, W - tx - (o.meta ? tw(o.meta, 10.5) + 30 : 20), 11), { size: 11, ...(o.subColor ? { fill: o.subColor } : { cls: 'm' as const }) })
     if (o.pct !== undefined) body += bar(tx, 50, W - tx - 14, 4, o.pct === 'busy' ? undefined : o.pct, color)
-    return <Svg key={o.key} source={svg(W, h, body)} alt={`${o.title}${o.sub ? `: ${o.sub}` : ''}`} width={W} height={h} />
+    return <Svg key={o.key} source={svg(W, rowH, body)} alt={`${o.title}${o.sub ? `: ${o.sub}` : ''}`} width={W} height={rowH} />
   }
   return (
     <Box key={o.key} flexDirection="column">
