@@ -19,6 +19,8 @@ export type BandSpec = {
 }
 
 const H = 36
+const ACTION_COLS = 29 // fixed button column, so buttons line up under each other in every band
+const RIGHT_PX = 250 // fixed right region (bar, chips, side text): titles truncate at the same x in every band
 
 // The band above the prompt: one card, same anatomy in every mod. `nested` is `await below(next, e)` (the bands beneath),
 // `ui` is `$.ui.resolve(e)`: `$` never crosses an import, so the mod passes both in.
@@ -36,7 +38,7 @@ export const band = (ui: any, e: any, nested: unknown, s: BandSpec) => {
 
   if (isRich(ui, e)) {
     const { Svg } = ui
-    const W = Math.min(s.maxW ?? 640, svgWidth(e.props.bodyColumns, 110 + buttons.length * 70))
+    const W = Math.min(s.maxW ?? 1600, svgWidth(e.props.bodyColumns, ACTION_COLS * 8 + 24)) // every band the same width
     let right = W - 12
     let body = `<rect class="c" x="0.5" y="0.5" width="${W - 1}" height="${H - 1}" rx="9"/>`
     for (const c of [...(s.chips ?? [])].reverse()) {
@@ -51,8 +53,9 @@ export const band = (ui: any, e: any, nested: unknown, s: BandSpec) => {
     }
     const tx = 38
     body += s.ring && s.pct !== undefined ? ring(20, 18, 9, s.pct, color, s.busy) : dot(20, 18, color, s.busy)
-    const barW = s.pct !== undefined && !s.ring ? 230 : 0
-    const textW = Math.max(60, right - tx - (barW ? barW + 50 : 0))
+    const barW = s.pct !== undefined && !s.ring ? 170 : 0
+    const hasRight = Boolean(barW || s.chips?.length || s.right)
+    const textW = Math.max(120, W - tx - 16 - (hasRight ? RIGHT_PX : 0))
     body += text(tx, s.detail ? 16 : 22, fit(s.title, textW, 13), { size: 13, weight: 600 })
     if (s.detail) body += text(tx, 29, fit(s.detail, textW, 11), { size: 11, cls: 'm' })
     if (barW) {
@@ -67,7 +70,9 @@ export const band = (ui: any, e: any, nested: unknown, s: BandSpec) => {
       <Box flexDirection="column">
         <Box flexDirection="row" alignItems="center" gap={1}>
           <Svg source={svg(W, H, body)} alt={[s.title, s.detail].filter(Boolean).join(': ')} width={W} height={H} />
-          {buttons}
+          <Box width={ACTION_COLS} flexDirection="row" alignItems="center" gap={1}>
+            {buttons}
+          </Box>
         </Box>
         {rows}
         {nested}
