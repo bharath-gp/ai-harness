@@ -1,7 +1,8 @@
 import type { Register } from 'claude-code'
 
-import { band, item, paneHeader } from './band'
-import { below } from './ui'
+import { band, paneHeader } from './band'
+import { textCard } from './kit'
+import { below, P } from './ui'
 
 
 type Item = { text: string; verdict: 'right' | 'wrong' | undefined }
@@ -80,15 +81,20 @@ export const register: Register = on => {
       <Box flexDirection="column" gap={1}>
         {paneHeader(ui, e, { title: 'Assumptions', sub: `${reviewed}/${items.length} reviewed · ${wrong.length} wrong`, pct: items.length ? (reviewed / items.length) * 100 : 0, tone: 'warn' })}
         {items.length === 0 && <Text color="#8b8f98">Nothing to review.</Text>}
-        {items.map((it, i) => (
-          <Box key={`r${i}`} flexDirection="column">
-            {item(ui, e, { key: `c${i}`, tone: it.verdict === 'wrong' ? 'err' : it.verdict === 'right' ? 'ok' : 'warn', title: it.text, chip: it.verdict ?? 'unreviewed' })}
-            <Box flexDirection="row" gap={1}>
-              <Button key={`ok${i}`} label="Right" variant={it.verdict === 'right' ? 'primary' : 'secondary'} onPress={() => set(i, 'right')} />
-              <Button key={`no${i}`} label="Wrong" variant={it.verdict === 'wrong' ? 'primary' : 'secondary'} onPress={() => set(i, 'wrong')} />
-            </Box>
-          </Box>
-        ))}
+        {items.map((it, i) => {
+          const color = it.verdict === 'wrong' ? P.err : it.verdict === 'right' ? P.ok : P.warn // yellow until reviewed
+          return textCard(ui, {
+            key: `r${i}`,
+            color,
+            text: it.text,
+            children: (
+              <Box flexDirection="row" gap={1}>
+                <Button key={`ok${i}`} label="Right" variant={it.verdict === 'right' ? 'primary' : 'secondary'} onPress={() => set(i, 'right')} />
+                <Button key={`no${i}`} label="Wrong" variant={it.verdict === 'wrong' ? 'primary' : 'secondary'} onPress={() => set(i, 'wrong')} />
+              </Box>
+            ),
+          })
+        })}
         {wrong.length > 0 && (
           <Button
             key="send"

@@ -78,3 +78,15 @@ export const panel = (ui: any, children: unknown, o: { color?: string; bg?: stri
     {children}
   </ui.Box>
 )
+
+// A card whose text wraps in full (no truncation): a coloured stripe on the left, text, optional muted line and actions.
+export const textCard = (ui: any, o: { key: string; color: string; text: string; sub?: string; children?: unknown }) => (
+  <ui.Box key={o.key} flexDirection="row" borderStyle="round" borderColor="#30343c" backgroundColor="#212226">
+    <ui.Box width={1} backgroundColor={o.color} />
+    <ui.Box flexDirection="column" paddingX={1} flexGrow={1} flexShrink={1}>
+      <ui.Text wrap="wrap">{o.text}</ui.Text>
+      {o.sub ? <ui.Text wrap="wrap" color={P.muted}>{o.sub}</ui.Text> : null}
+      {o.children}
+    </ui.Box>
+  </ui.Box>
+)

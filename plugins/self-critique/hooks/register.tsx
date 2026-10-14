@@ -1,7 +1,8 @@
 import type { Register } from 'claude-code'
 
-import { item, paneHeader } from './band'
-import type { Tone } from './ui'
+import { paneHeader } from './band'
+import { textCard } from './kit'
+import { P, type Tone } from './ui'
 
 type Critique = {
   verdict: 'strong' | 'mixed' | 'weak'
@@ -88,11 +89,11 @@ export const register: Register = on => {
         </Box>
         {result && (
           <>
-            {item(ui, e, { key: 'verdict', tone, title: result.summary, chip: result.verdict })}
-            {result.strengths.map((s, i) => item(ui, e, { key: `s${i}`, tone: 'ok', title: s }))}
+            {textCard(ui, { key: 'verdict', color: P[tone], text: `${result.verdict.toUpperCase()}: ${result.summary}` })}
+            {result.strengths.map((s, i) => textCard(ui, { key: `s${i}`, color: P.ok, text: s }))}
             {result.flaws.map((f, i) => (
               <Box key={`f${i}`} flexDirection="column">
-                {item(ui, e, { key: `fc${i}`, tone: 'err', title: f.issue, sub: `fix: ${f.fix}` })}
+                {textCard(ui, { key: `fc${i}`, color: P.err, text: f.issue, sub: `fix: ${f.fix}` })}
                 <Button key={`fix${i}`} label="Make this fix" onPress={() => void $.prompt.submit({ text: `Fix this issue in your last answer: ${f.issue}. ${f.fix}` })} />
               </Box>
             ))}
