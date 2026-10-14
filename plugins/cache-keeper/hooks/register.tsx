@@ -129,6 +129,7 @@ export const register: Register = on => {
     if (e.props.hasSurvey || lastTouch === 0) return next(e)
     const now = await $.clock.now()
     const left = TTL - (now - lastTouch)
+    if (left >= WARN_BEFORE) return next(e) // only when the cache is about to go cold, or already is
     const warm = left > 0
     const tone: Tone = !warm ? 'err' : left < WARN_BEFORE ? 'warn' : 'ok'
     const keeping = warmUntil > now
