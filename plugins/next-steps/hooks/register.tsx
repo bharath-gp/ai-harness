@@ -1,5 +1,9 @@
 import type { Register } from 'claude-code'
 
+import { band } from './band'
+import { below } from './ui'
+
+
 const PROMPT = (answer: string) =>
   `Given the assistant's last reply below, suggest exactly 3 short, concrete next prompts the user would plausibly send next (max 12 words each, imperative). Reply with only a JSON array of 3 strings.\n\n<reply>\n${answer.slice(0, 6000)}\n</reply>`
 
@@ -33,19 +37,14 @@ export const register: Register = on => {
     return next(e)
   })
 
-  on('ui.render', { component: 'AbovePrompt' }, ($, e, next) => {
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey || steps.length === 0) return next(e)
-    const { Box, Text, Button } = $.ui.resolve(e)
-    return (
-      <Box flexDirection="column">
-        <Text dimColor>Next:</Text>
-        {steps.map((s, i) => (
-          <Button key={`s${i}`} plain hotkey={String(i + 1)} onPress={() => $.prompt.fill({ text: s })}>
-            {s}
-          </Button>
-        ))}
-        <Button key="x" plain dimColor label="dismiss" onPress={() => { steps = []; $.ui.invalidate('ui.render') }} />
-      </Box>
-    )
+    return band($.ui.resolve(e), e, await below(next, e), {
+      title: 'Next steps',
+      tone: 'info',
+      detail: 'click one to put it in the prompt',
+      rows: steps.map((s, i) => ({ key: `s${i}`, label: s, hotkey: String(i + 1), onPress: () => $.prompt.fill({ text: s }) })),
+      buttons: [{ key: 'x', label: 'Dismiss', plain: true, onPress: () => { steps = []; $.ui.invalidate('ui.render') } }],
+    })
   })
 }

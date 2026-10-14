@@ -1,5 +1,8 @@
 import type { Register } from 'claude-code'
 
+import { band } from './band'
+import { below, fmtCost, fmtTok, type Tone } from './ui'
+
 const TTL = 60 * 60_000 // main cache lifetime; ponytail: 1h only, read promptCacheTtl if 5m billing matters
 const PING_AFTER = 50 * 60_000
 const WARN_BEFORE = 5 * 60_000
@@ -21,12 +24,21 @@ let warnedCold = false
 let warnedSoon = false
 let warmUntil = 0
 let lastPing = ''
+let tokens = 0
+let rates = [4, 0.2]
+
+const sync = async ($: any) => {
+  const { context } = await $.session.usage()
+  tokens = context.tokens ?? tokens
+  rates = price(await $.session.model())
+  $.ui.invalidate('ui.render')
+}
 
 const touch = async ($: any) => {
   lastTouch = await $.clock.now()
   warnedCold = false
   warnedSoon = false
-  $.ui.invalidate('ui.render')
+  await sync($)
 }
 
 export const register: Register = on => {
@@ -34,8 +46,9 @@ export const register: Register = on => {
     await $.command.register({ name: 'keepwarm', description: 'Keep the prompt cache warm: /keepwarm [90m|2h|off|status]' })
     await $.command.register({ name: 'cache-tax', description: 'Show prompt cache state and rewrite cost' })
     lastTouch = await $.clock.now()
+    void sync($)
 
-    $.clock.every(60_000, async () => {
+    $.clock.every(30_000, async () => {
       const now = await $.clock.now()
       const idle = now - lastTouch
       if (lastTouch && TTL - idle < WARN_BEFORE && TTL - idle > 0 && !warnedSoon && warmUntil < now) {
@@ -46,7 +59,7 @@ export const register: Register = on => {
         const r = await $.model.fork({ prompt: 'Reply with the single word: ok' })
         if (r.isAnswered) {
           lastTouch = now
-          lastPing = `read ${r.usage.cache_read_input_tokens} tok`
+          lastPing = `read ${fmtTok(r.usage.cache_read_input_tokens)}`
           if (r.usage.cache_read_input_tokens === 0) {
             warmUntil = 0 // ping wrote instead of read: cache was already cold, stop paying
             lastPing += ', cold: stopped'
@@ -61,10 +74,12 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'keepwarm' }, async ($, e) => {
+    try {
     const now = await $.clock.now()
-    const arg = e.args.trim()
+    const arg = (e.args ?? "").trim()
     if (arg === 'off') {
       warmUntil = 0
+      $.ui.invalidate('ui.render')
       return { text: 'keepwarm off.' }
     }
     if (arg === 'status') {
@@ -75,16 +90,17 @@ export const register: Register = on => {
     warmUntil = now + window
     $.ui.invalidate('ui.render')
     return { text: `keepwarm armed for ${mins(window)}. Pings are cheap cache reads, but they do cost tokens.` }
+    } catch (err) {
+      return { text: `keepwarm failed: ${(err as Error).message}` }
+    }
   })
 
   on('command.run', { command: 'cache-tax' }, async $ => {
+    await sync($)
     const now = await $.clock.now()
-    const { context } = await $.session.usage()
-    const [w, r] = price(await $.session.model())
-    const tok = context.tokens ?? 0
     const left = TTL - (now - lastTouch)
     return {
-      text: `cache ${left > 0 ? `warm ${mins(left)} left` : 'cold'} | context ${tok} tok | cold send ≈ $${((tok * w) / 1e6).toFixed(2)} vs warm $${((tok * r) / 1e6).toFixed(2)}`,
+      text: `cache ${left > 0 ? `warm ${mins(left)} left` : 'cold'} | context ${tokens} tok | cold send ≈ $${((tokens * rates[0]) / 1e6).toFixed(2)} vs warm $${((tokens * rates[1]) / 1e6).toFixed(2)}`,
     }
   })
 
@@ -93,13 +109,11 @@ export const register: Register = on => {
     const isSlash = e.text.trimStart().startsWith('/')
     const isCold = lastTouch > 0 && now - lastTouch >= TTL
     if (isCold && !warnedCold && !isSlash && e.origin.kind !== 'plugin') {
-      const { context } = await $.session.usage()
-      const tok = context.tokens ?? 0
-      if (tok >= MIN_GUARD_TOKENS) {
-        const [w, r] = price(await $.session.model())
+      await sync($)
+      if (tokens >= MIN_GUARD_TOKENS) {
         warnedCold = true
         return {
-          drop: `cache-keeper: the cache went cold ${mins(now - lastTouch - TTL)} ago. Sending rewrites up to ${tok} tokens ≈ $${((tok * w) / 1e6).toFixed(2)} (warm: $${((tok * r) / 1e6).toFixed(2)}). Send again to pay it, or /clear.`,
+          drop: `cache-keeper: the cache went cold ${mins(now - lastTouch - TTL)} ago. Sending rewrites up to ${tokens} tokens ≈ $${((tokens * rates[0]) / 1e6).toFixed(2)} (warm: $${((tokens * rates[1]) / 1e6).toFixed(2)}). Send again to pay it, or /clear.`,
         }
       }
     }
@@ -115,14 +129,21 @@ export const register: Register = on => {
     if (e.props.hasSurvey || lastTouch === 0) return next(e)
     const now = await $.clock.now()
     const left = TTL - (now - lastTouch)
-    const { Box, Text } = $.ui.resolve(e)
     const warm = left > 0
-    return (
-      <Box>
-        <Text color={warm ? 'success' : 'warning'} bold>◆ cache </Text>
-        <Text color={warm ? 'success' : 'warning'}>{warm ? `warm ${mins(left)}` : 'cold'}</Text>
-        {warmUntil > now && <Text dimColor>  keepwarm {mins(warmUntil - now)}{lastPing && ` · ${lastPing}`}</Text>}
-      </Box>
-    )
+    const tone: Tone = !warm ? 'err' : left < WARN_BEFORE ? 'warn' : 'ok'
+    const keeping = warmUntil > now
+    const cold$ = fmtCost((tokens * rates[0]) / 1e6)
+    const warm$ = fmtCost((tokens * rates[1]) / 1e6)
+    return band($.ui.resolve(e), e, await below(next, e), {
+      title: warm ? `Cache warm · ${mins(left)} left` : 'Cache cold',
+      tone,
+      ring: true,
+      pct: warm ? Math.max(0, (left / TTL) * 100) : 100,
+      busy: !warm,
+      detail: warm ? `${fmtTok(tokens)} ctx · next send ${warm$}` : `${fmtTok(tokens)} ctx · next send rewrites it ${cold$} (warm ${warm$})`,
+      chips: keeping ? [`keepwarm ${mins(warmUntil - now)}`] : [],
+      right: keeping ? lastPing || 'no ping yet' : undefined,
+      buttons: [{ key: 'kw', label: keeping ? 'Stop keepwarm' : 'Keep warm', onPress: () => void $.command.run({ command: 'keepwarm', args: keeping ? 'off' : '' }) }],
+    })
   })
 }

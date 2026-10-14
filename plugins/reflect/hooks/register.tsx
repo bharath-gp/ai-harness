@@ -1,5 +1,9 @@
 import type { Register } from 'claude-code'
 
+import { band } from './band'
+import { below } from './ui'
+
+
 const START = '<!-- reflect:start -->'
 const END = '<!-- reflect:end -->'
 const SKIP = /^(ok|okay|yes|no|y|n|continue|go on|thanks|thank you|go|sure|proceed)\W*$/i
@@ -75,20 +79,21 @@ export const register: Register = on => {
     return next(e)
   })
 
-  on('ui.render', { component: 'AbovePrompt' }, ($, e, next) => {
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey || queue.length === 0) return next(e)
     const f = queue[0]
     const other = f.scope === 'global' ? 'repo' : 'global'
-    const { Box, Text, Button } = $.ui.resolve(e)
-    return (
-      <Box flexDirection="column">
-        <Text color="remember">Rule: {f.rule}{f.count > 1 ? ` ×${f.count}` : ''} ({f.scope})</Text>
-        <Box gap={1}>
-          <Button key="save" variant="primary" label="Save" onPress={() => save($, f, f.scope)} />
-          <Button key="other" label={`Save ${other === 'global' ? 'globally' : 'in this repo'}`} onPress={() => save($, f, other)} />
-          <Button key="skip" label="Skip" onPress={() => { queue = queue.filter(q => q !== f); $.ui.invalidate('ui.render') }} />
-        </Box>
-      </Box>
-    )
+    const more = queue.length > 1 ? [`+${queue.length - 1} more`] : []
+    return band($.ui.resolve(e), e, await below(next, e), {
+      title: 'Rule found',
+      tone: 'purple',
+      detail: f.rule,
+      chips: [f.scope, ...(f.count > 1 ? [`×${f.count}`] : []), ...more],
+      buttons: [
+        { key: 'save', label: 'Save', onPress: () => save($, f, f.scope) },
+        { key: 'other', label: other === 'global' ? 'Global instead' : 'This repo instead', onPress: () => save($, f, other) },
+        { key: 'skip', label: 'Skip', plain: true, onPress: () => { queue = queue.filter(q => q !== f); $.ui.invalidate('ui.render') } },
+      ],
+    })
   })
 }

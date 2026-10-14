@@ -15,18 +15,24 @@ const ALLOWED_PATH = /(^|\/)\.env(\.|$)|\.example$|\.sample$/
 
 const scan = (text: string) => SECRETS.find(([re]) => re.test(text))?.[1]
 
-const guard = (name: string, path: string, text: string) => {
+let blocked = 0
+
+const guard = ($: any, path: string, text: string) => {
   if (ALLOWED_PATH.test(path)) return undefined
   const kind = scan(text)
-  return kind ? { deny: `${name}: refused to write a ${kind} into ${path}. Read it from an env var instead.` } : undefined
+  if (!kind) return undefined
+  blocked += 1
+  $.ui.status(`🛡 Secret Sentry · ${blocked} blocked`)
+  $.ui.toast(`Secret Sentry blocked a ${kind} in ${path.split('/').pop()}`)
+  return { deny: `${$.plugin.name}: refused to write a ${kind} into ${path}. Read it from an env var instead.` }
 }
 
 export const register: Register = on => {
-  on('tool.call', { tool: 'Write' }, ($, e, next) => guard($.plugin.name, e.file_path, e.content) ?? next(e)).catch(
+  on('tool.call', { tool: 'Write' }, ($, e, next) => guard($, e.file_path, e.content) ?? next(e)).catch(
     ($, e, next) => (next.called ? next(e) : { deny: `${$.plugin.name}: guard failed.` }),
   )
 
-  on('tool.call', { tool: 'Edit' }, ($, e, next) => guard($.plugin.name, e.file_path, e.new_string) ?? next(e)).catch(
+  on('tool.call', { tool: 'Edit' }, ($, e, next) => guard($, e.file_path, e.new_string) ?? next(e)).catch(
     ($, e, next) => (next.called ? next(e) : { deny: `${$.plugin.name}: guard failed.` }),
   )
 }

@@ -1,5 +1,9 @@
 import type { Register } from 'claude-code'
 
+import { band, item, paneHeader } from './band'
+import { below } from './ui'
+
+
 type Item = { text: string; verdict: 'right' | 'wrong' | undefined }
 
 const PROMPT = (task: string, answer: string) =>
@@ -48,34 +52,40 @@ export const register: Register = on => {
     return next(e)
   })
 
-  on('ui.render', { component: 'AbovePrompt' }, ($, e, next) => {
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey || items.length === 0) return next(e)
-    const { Box, Text, Button } = $.ui.resolve(e)
-    return (
-      <Box>
-        <Text color="warning">Claude made {items.length} assumption{items.length > 1 ? 's' : ''} </Text>
-        <Button key="review" label="Review" hotkey="0" onPress={() => $.ui.open({ id: 'assumptions', title: 'Assumptions', focus: true, closeOnEscape: true })} />
-        <Button key="skip" plain dimColor label=" dismiss" onPress={() => { items = []; redraw($) }} />
-      </Box>
-    )
+    const reviewed = items.filter(i => i.verdict).length
+    return band($.ui.resolve(e), e, await below(next, e), {
+      title: `Claude made ${items.length} assumption${items.length > 1 ? 's' : ''}`,
+      tone: 'warn',
+      detail: `${reviewed}/${items.length} reviewed`,
+      pct: (reviewed / items.length) * 100,
+      buttons: [
+        { key: 'review', label: 'Review', hotkey: '0', onPress: () => $.ui.open({ id: 'assumptions', title: 'Assumptions', focus: true, closeOnEscape: true }) },
+        { key: 'skip', label: 'Dismiss', plain: true, onPress: () => { items = []; redraw($) } },
+      ],
+    })
   })
 
   on('ui.render', { component: 'Pane', requestId: 'assumptions' }, ($, e) => {
-    const { Box, Text, Button } = $.ui.resolve(e)
+    const ui = $.ui.resolve(e)
+    const { Box, Text, Button } = ui
     const wrong = items.filter(i => i.verdict === 'wrong')
     const set = (i: number, v: Item['verdict']) => {
       items = items.map((it, j) => (j === i ? { ...it, verdict: v } : it))
       redraw($)
     }
+    const reviewed = items.filter(i => i.verdict).length
     return (
-      <Box flexDirection="column">
-        {items.length === 0 && <Text dimColor>Nothing to review.</Text>}
+      <Box flexDirection="column" gap={1}>
+        {paneHeader(ui, e, { title: 'Assumptions', sub: `${reviewed}/${items.length} reviewed · ${wrong.length} wrong`, pct: items.length ? (reviewed / items.length) * 100 : 0, tone: 'warn' })}
+        {items.length === 0 && <Text color="#8b8f98">Nothing to review.</Text>}
         {items.map((it, i) => (
-          <Box key={`r${i}`} flexDirection="column" marginBottom={1}>
-            <Text color={it.verdict === 'wrong' ? 'error' : it.verdict === 'right' ? 'success' : undefined}>{i + 1}. {it.text}</Text>
-            <Box gap={1}>
-              <Button key={`ok${i}`} label="Right" onPress={() => set(i, 'right')} />
-              <Button key={`no${i}`} label="Wrong" onPress={() => set(i, 'wrong')} />
+          <Box key={`r${i}`} flexDirection="column">
+            {item(ui, e, { key: `c${i}`, tone: it.verdict === 'wrong' ? 'err' : it.verdict === 'right' ? 'ok' : 'warn', title: it.text, chip: it.verdict ?? 'unreviewed' })}
+            <Box flexDirection="row" gap={1}>
+              <Button key={`ok${i}`} label="Right" variant={it.verdict === 'right' ? 'primary' : 'secondary'} onPress={() => set(i, 'right')} />
+              <Button key={`no${i}`} label="Wrong" variant={it.verdict === 'wrong' ? 'primary' : 'secondary'} onPress={() => set(i, 'wrong')} />
             </Box>
           </Box>
         ))}

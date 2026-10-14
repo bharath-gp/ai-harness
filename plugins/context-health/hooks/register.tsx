@@ -1,16 +1,26 @@
 import type { Register } from 'claude-code'
 
+import { band } from './band'
+import { below, fmtTok, zoneTone } from './ui'
+
+
 const HANDOFF_FILE = '.claude/handoff.md'
 const HANDOFF_PROMPT = `Write a handoff brief to ${HANDOFF_FILE} so a fresh session can continue this work: goal, decisions made, files touched, current state, exact next steps. Keep it under 60 lines. Reply "handoff written" when done.`
 
 let percent = 0
+let tokens = 0
+let windowSize = 0
+let rates: { kind: string; percentUsed: number }[] = []
 let threshold = 50 // ponytail: stored per session; persist via $.store if wanted across sessions
 let auto = false
 let handingOff = false
 
 const refresh = async ($: any) => {
-  const { context } = await $.session.usage()
+  const { context, rateLimits } = await $.session.usage()
   percent = Math.round(context.percent ?? 0)
+  tokens = context.tokens ?? 0
+  windowSize = context.window ?? 0
+  rates = rateLimits ?? []
   $.ui.invalidate('ui.render')
 }
 
@@ -32,8 +42,8 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'autohandoff' }, async (_$, e) => {
-    const n = Number(e.args.trim())
-    if (e.args.trim() === 'off') auto = false
+    const n = Number((e.args ?? "").trim())
+    if ((e.args ?? "").trim() === 'off') auto = false
     else {
       auto = true
       if (n >= 10 && n <= 95) threshold = n
@@ -56,21 +66,24 @@ export const register: Register = on => {
     return done
   })
 
-  on('ui.render', { component: 'AbovePrompt' }, ($, e, next) => {
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey || percent === 0) return next(e)
-    const { Box, Text, Button } = $.ui.resolve(e)
     const high = percent >= threshold
-    return (
-      <Box>
-        <Text color={high ? 'warning' : 'success'}>ctx {percent}% </Text>
-        {high && (
-          <>
-            <Text color="warning">quality may drop  </Text>
-            <Button key="h" label="Handoff" hotkey="h" onPress={() => startHandoff($)} />
-            <Button key="f" label="Fresh" hotkey="f" onPress={() => void $.command.run({ command: 'clear', args: '' })} />
-          </>
-        )}
-      </Box>
-    )
+    const limits = rates.map(r => `${r.kind.replace('five_hour', '5h').replace('seven_day', '7d')} ${Math.round(r.percentUsed)}%`).join(' · ')
+    return band($.ui.resolve(e), e, await below(next, e), {
+      title: `Context ${percent}%`,
+      tone: zoneTone(percent, threshold - 10, threshold),
+      ring: true,
+      pct: percent,
+      detail: high ? 'quality may drop: hand off or start fresh' : `${fmtTok(tokens)} of ${fmtTok(windowSize)} tokens`,
+      right: limits || undefined,
+      chips: auto ? [`auto @${threshold}%`] : [],
+      buttons: high
+        ? [
+            { key: 'h', label: 'Handoff', hotkey: 'h', onPress: () => startHandoff($) },
+            { key: 'f', label: 'Fresh', hotkey: 'f', plain: true, onPress: () => void $.command.run({ command: 'clear', args: '' }) },
+          ]
+        : [],
+    })
   })
 }
