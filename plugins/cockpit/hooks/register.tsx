@@ -312,12 +312,18 @@ let auto = false
 let handingOff = false
 
 let lastRefresh = 0
+let turnNo = 0
+let speed = 0 // last measured output tok/s of the main session
+let costNow = 0
+let costAtStart = 0
+let bandHidden = false // closed with ×, for the rest of the session
 
 async function refresh($: any, force = false) {
   const now = await $.clock.now()
   if (!force && now - lastRefresh < 2000) return
   lastRefresh = now
-  const { context, rateLimits } = await $.session.usage()
+  const { context, rateLimits, cost } = await $.session.usage()
+  costNow = cost?.usd ?? costNow
   percent = Math.round(context.percent ?? 0)
   contextHealthTokens = context.tokens ?? 0
   windowSize = context.window ?? 0
@@ -334,6 +340,30 @@ export async function contextHealthSessionStart($: any, e: any, next: any) {
   await $.command.register({ name: 'ctx-handoff', description: 'Write a handoff brief, clear, and continue in a fresh context' })
   await $.command.register({ name: 'autohandoff', description: 'Auto handoff at a context %: /autohandoff [percent|off]' })
   return next(e)
+}
+
+export async function contextHealthTurnStart($: any, e: any, next: any) {
+  if (e.agentId === undefined) {
+    turnNo += 1
+    costAtStart = (await $.session.usage()).cost?.usd ?? costNow
+    costNow = costAtStart
+  }
+  return next(e)
+}
+
+// Times each main-session response from its first chunk to its stop usage; stubs and instant bursts are dropped.
+export async function* contextHealthTurnStep($: any, e: any, next: any) {
+  if (e.agentId !== undefined) return yield* next(e)
+  let startedAt: number | null = null
+  for await (const chunk of next(e)) {
+    if (startedAt === null) startedAt = await $.clock.now()
+    if (chunk.kind === 'stop' && chunk.usage) {
+      const secs = ((await $.clock.now()) - startedAt) / 1000
+      const rate = chunk.usage.output_tokens / secs
+      if (chunk.usage.output_tokens >= 50 && secs >= 1 && rate <= 400) speed = Math.round(rate)
+    }
+    yield chunk
+  }
 }
 
 export async function contextHealthCommandRunHandoff($: any) {
@@ -381,7 +411,7 @@ export async function contextHealthTurnComplete($: any, e: any, next: any) {
 }
 
 export async function contextHealthUiRenderAbovePrompt($: any, e: any, next: any) {
-  if (e.props.hasSurvey || percent === 0) return next(e)
+  if (e.props.hasSurvey || percent === 0 || bandHidden) return next(e)
   const high = percent >= threshold
   const limits = contextHealthRates.map(r => `${r.kind.replace('five_hour', '5h').replace('seven_day', '7d')} ${Math.round(r.percentUsed)}%`).join(' · ')
   return band($.ui.resolve(e), e, await below(next, e), {
@@ -391,13 +421,21 @@ export async function contextHealthUiRenderAbovePrompt($: any, e: any, next: any
     pct: percent,
     detail: high ? 'quality may drop: hand off or start fresh' : `${fmtTok(contextHealthTokens)} of ${fmtTok(windowSize)} tokens`,
     right: limits || undefined,
-    chips: auto ? [`auto @${threshold}%`] : [],
-    buttons: high
+    chips: [
+      ...(turnNo ? [`turn ${turnNo}`] : []),
+      ...(speed ? [`${speed} tok/s`] : []),
+      ...(costNow ? [`${fmtCost(Math.max(0, costNow - costAtStart))} · ${fmtCost(costNow)}`] : []),
+      ...(auto ? [`auto @${threshold}%`] : []),
+    ],
+    buttons: [
+      ...(high
       ? [
           { key: 'h', label: 'Handoff', hotkey: 'h', onPress: () => startHandoff($) },
           { key: 'f', label: 'Fresh', hotkey: 'f', plain: true, onPress: () => void $.command.run({ command: 'clear', args: '' }) },
         ]
-      : [],
+      : []),
+      { key: 'x', label: '×', plain: true, onPress: () => { bandHidden = true; void $.ui.invalidate('ui.render') } },
+    ],
   })
 }
 
@@ -1006,6 +1044,8 @@ export const register: Register = (on, options) => {
     const n1 = (x: any) => (options.filetree === false ? n2(x) : filetreePromptSubmit($, x, n2))
     return options.cacheKeeper === false ? n1(e) : cacheKeeperPromptSubmit($, e, n1)
   })
+  if (options.contextHealth !== false) on('turn.start', contextHealthTurnStart)
+  if (options.contextHealth !== false) on('turn.step', contextHealthTurnStep)
   on('turn.complete', ($, e, next) => {
     const n3 = (x: any) => next(x)
     const n2 = (x: any) => (options.nextSteps === false ? n3(x) : nextStepsTurnComplete($, x, n3))
