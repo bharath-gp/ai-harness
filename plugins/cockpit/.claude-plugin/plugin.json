@@ -1,7 +1,7 @@
 {
   "name": "cockpit",
-  "version": "0.1.8",
-  "description": "Live panes and bands for session awareness: agents-progress, cache-keeper, context-health, filetree, next-steps",
+  "version": "0.1.9",
+  "description": "Live panes and bands for session awareness: agents-progress, cache-keeper, context-health, filetree, next-steps, usage-limits",
   "userConfig": {
     "agentsProgress": {
       "type": "boolean",
@@ -31,6 +31,12 @@
       "type": "boolean",
       "title": "next-steps",
       "description": "Suggests three next prompts after each turn",
+      "default": true
+    },
+    "usageLimits": {
+      "type": "boolean",
+      "title": "usage-limits",
+      "description": "Always-visible band with session (5h) and weekly (7d) limit usage, reset countdown, pace and a toast at 90%",
       "default": true
     }
   }

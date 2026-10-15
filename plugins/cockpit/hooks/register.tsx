@@ -965,6 +965,58 @@ export async function filetreeUiRenderAbovePrompt($: any, e: any, next: any) {
   })
 }
 
+// ===== usage-limits =====
+const LIMIT_MS: Record<string, number> = { five_hour: 5 * 3600_000, seven_day: 7 * 86_400_000 }
+const LIMIT_SHORT: Record<string, string> = { five_hour: '5h', seven_day: '7d' }
+
+let usageLimitRates: { kind: string; percentUsed: number; resetsAt?: string }[] = []
+let usageLimitWarned: Record<string, boolean> = {} // toast once per window until it drops back under 90%
+
+function usageLimitsSet($: any, rates: any[]) {
+  usageLimitRates = (rates ?? []).filter((r: any) => r.kind in LIMIT_MS)
+  for (const r of usageLimitRates) {
+    if (r.percentUsed >= 90 && !usageLimitWarned[r.kind]) {
+      usageLimitWarned[r.kind] = true
+      $.ui.toast(`${LIMIT_SHORT[r.kind]} limit at ${Math.round(r.percentUsed)}%`)
+    } else if (r.percentUsed < 90) usageLimitWarned[r.kind] = false
+  }
+  $.ui.invalidate('ui.render')
+}
+
+const usageLeft = (ms: number) => (ms >= 86_400_000 ? `${Math.floor(ms / 86_400_000)}d${Math.floor((ms % 86_400_000) / 3600_000)}h` : fmtDur(ms))
+
+// Burn vs time: +12% means 12 points more used than the window's elapsed share.
+const usagePace = (r: { kind: string; percentUsed: number }, ms: number) => {
+  const d = Math.round(r.percentUsed - 100 * (1 - ms / LIMIT_MS[r.kind]))
+  return `pace ${d > 0 ? '+' : ''}${d}%`
+}
+
+export async function usageLimitsSessionStart($: any, e: any, next: any) {
+  usageLimitsSet($, (await $.session.usage()).rateLimits)
+  return next(e)
+}
+
+export async function usageLimitsSessionMeasure($: any, e: any, next: any) {
+  usageLimitsSet($, e.rateLimits)
+  return next(e)
+}
+
+export async function usageLimitsUiRenderAbovePrompt($: any, e: any, next: any) {
+  if (e.props.hasSurvey || !usageLimitRates.length) return next(e)
+  const now = await $.clock.now()
+  const left = (r: { resetsAt?: string }) => (r.resetsAt ? Date.parse(r.resetsAt) - now : 0)
+  const main = usageLimitRates.find(r => r.kind === 'five_hour') ?? usageLimitRates[0]
+  const rest = usageLimitRates.filter(r => r !== main)
+  const mainLeft = left(main)
+  return band($.ui.resolve(e), e, await below(next, e), {
+    title: main.kind === 'five_hour' ? 'Session limit' : 'Weekly limit',
+    tone: zoneTone(Math.max(...usageLimitRates.map(r => r.percentUsed)), 70, 90),
+    pct: main.percentUsed,
+    detail: [mainLeft > 0 ? `resets in ${usageLeft(mainLeft)}` : 'reset pending', ...(mainLeft > 0 ? [usagePace(main, mainLeft)] : [])].join(' · '),
+    right: rest.map(r => `${LIMIT_SHORT[r.kind]} ${Math.round(r.percentUsed)}%${left(r) > 0 ? ` · ${usageLeft(left(r))}` : ''}`).join('  ') || undefined,
+  })
+}
+
 // ===== next-steps =====
 const PROMPT = (answer: string) =>
   `Given the assistant's last reply below, suggest exactly 3 short, concrete next prompts the user would plausibly send next (max 12 words each, imperative). Reply with only a JSON array of 3 strings.\n\n<reply>\n${answer.slice(0, 6000)}\n</reply>`
@@ -1012,7 +1064,8 @@ export async function nextStepsUiRenderAbovePrompt($: any, e: any, next: any) {
 // Each mod is on unless its userConfig flag is false (toggle in the config menu; the module reloads).
 export const register: Register = (on, options) => {
   on('session.start', ($, e, next) => {
-    const n4 = (x: any) => next(x)
+    const n5 = (x: any) => next(x)
+    const n4 = (x: any) => (options.usageLimits === false ? n5(x) : usageLimitsSessionStart($, x, n5))
     const n3 = (x: any) => (options.filetree === false ? n4(x) : filetreeSessionStart($, x, n4))
     const n2 = (x: any) => (options.contextHealth === false ? n3(x) : contextHealthSessionStart($, x, n3))
     const n1 = (x: any) => (options.cacheKeeper === false ? n2(x) : cacheKeeperSessionStart($, x, n2))
@@ -1027,8 +1080,9 @@ export const register: Register = (on, options) => {
     return options.agentsProgress === false ? n1(e) : agentsProgressToolCall($, e, n1)
   })
   on('ui.render', { component: 'AbovePrompt' }, ($, e, next) => {
-    const n5 = (x: any) => next(x)
-    const n4 = (x: any) => (options.nextSteps === false ? n5(x) : nextStepsUiRenderAbovePrompt($, x, n5))
+    const n6 = (x: any) => next(x)
+    const n5 = (x: any) => (options.nextSteps === false ? n6(x) : nextStepsUiRenderAbovePrompt($, x, n6))
+    const n4 = (x: any) => (options.usageLimits === false ? n5(x) : usageLimitsUiRenderAbovePrompt($, x, n5))
     const n3 = (x: any) => (options.filetree === false ? n4(x) : filetreeUiRenderAbovePrompt($, x, n4))
     const n2 = (x: any) => (options.contextHealth === false ? n3(x) : contextHealthUiRenderAbovePrompt($, x, n3))
     const n1 = (x: any) => (options.cacheKeeper === false ? n2(x) : cacheKeeperUiRenderAbovePrompt($, x, n2))
@@ -1054,6 +1108,7 @@ export const register: Register = (on, options) => {
   })
   if (options.contextHealth !== false) on('command.run', { command: 'ctx-handoff' }, contextHealthCommandRunHandoff)
   if (options.contextHealth !== false) on('command.run', { command: 'autohandoff' }, contextHealthCommandRunAutohandoff)
+  if (options.usageLimits !== false) on('session.measure', usageLimitsSessionMeasure)
   if (options.filetree !== false) on('command.run', { command: 'filetree' }, filetreeCommandRunFiletree)
   if (options.filetree !== false) on('ui.render', { component: 'Pane', requestId: 'filetree' }, filetreeUiRenderPaneFiletree)
 }
