@@ -69,9 +69,9 @@ export const band = (ui: any, e: any, nested: unknown, s: BandSpec) => {
     }
     const tx = 38
     body += s.ring && s.pct !== undefined ? ring(20, 18, 9, s.pct, color, s.busy) : dot(20, 18, color, s.busy)
-    const barW = bars.length > 1 ? 130 : bars.length ? 170 : 0
+    const barW = bars.length > 1 ? 110 : bars.length ? 170 : 0
     const hasRight = Boolean(bars.length || s.chips?.length || s.right)
-    const textW = Math.max(120, W - tx - 16 - (hasRight ? RIGHT_PX + Math.max(0, bars.length - 1) * (barW + 56) : 0))
+    const textW = Math.max(120, W - tx - 16 - (bars.length > 1 ? bars.length * (barW + 56) + 10 : hasRight ? RIGHT_PX : 0))
     body += text(tx, s.detail ? 16 : 22, fit(s.title, textW, 13), { size: 13, weight: 600 })
     if (s.detail) body += text(tx, 29, fit(s.detail, textW, 11), { size: 11, cls: 'm' })
     for (const b of [...bars].reverse()) {

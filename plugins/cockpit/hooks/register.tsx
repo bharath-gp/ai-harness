@@ -1011,7 +1011,7 @@ export async function usageLimitsUiRenderAbovePrompt($: any, e: any, next: any) 
   return band($.ui.resolve(e), e, await below(next, e), {
     title: 'Usage limits',
     tone: zoneTone(Math.max(...rates.map(r => r.percentUsed)), 70, 90),
-    detail: rates.map(r => `${LIMIT_SHORT[r.kind]} ${left(r) > 0 ? `resets in ${usageLeft(left(r))} · ${usagePace(r, left(r))}` : 'reset pending'}`).join('  ·  '),
+    detail: rates.map(r => `${LIMIT_SHORT[r.kind]} ${left(r) > 0 ? `${usageLeft(left(r))} (${usagePace(r, left(r)).replace('pace ', '')})` : 'reset pending'}`).join(' · '),
     bars: rates.map(r => ({ pct: r.percentUsed, label: LIMIT_SHORT[r.kind], tone: zoneTone(r.percentUsed, 70, 90) })),
   })
 }
