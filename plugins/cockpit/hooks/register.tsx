@@ -200,7 +200,7 @@ export async function cacheKeeperCommandRunKeepwarm($: any, e: any) {
   if (window === undefined) return { text: 'Usage: /keepwarm [90m|2h30m|off|status]' }
   warmUntil = now + window
   $.ui.invalidate('ui.render')
-  return { text: `keepwarm armed for ${mins(window)}. Pings are cheap cache reads, but they do cost cacheKeeperTokens.` }
+  return { text: `keepwarm armed for ${mins(window)}. Pings are cheap cache reads, but they do cost tokens.` }
   } catch (err) {
     return { text: `keepwarm failed: ${(err as Error).message}` }
   }
@@ -224,7 +224,7 @@ export async function cacheKeeperPromptSubmit($: any, e: any, next: any) {
     if (cacheKeeperTokens >= MIN_GUARD_TOKENS) {
       warnedCold = true
       return {
-        drop: `cache-keeper: the cache went cold ${mins(now - lastTouch - TTL)} ago. Sending rewrites up to ${cacheKeeperTokens} cacheKeeperTokens ≈ $${((cacheKeeperTokens * cacheKeeperRates[0]) / 1e6).toFixed(2)} (warm: $${((cacheKeeperTokens * cacheKeeperRates[1]) / 1e6).toFixed(2)}). Send again to pay it, or /clear.`,
+        drop: `cache-keeper: the cache went cold ${mins(now - lastTouch - TTL)} ago. Sending rewrites up to ${cacheKeeperTokens} tokens ≈ $${((cacheKeeperTokens * cacheKeeperRates[0]) / 1e6).toFixed(2)} (warm: $${((cacheKeeperTokens * cacheKeeperRates[1]) / 1e6).toFixed(2)}). Send again to pay it, or /clear.`,
       }
     }
   }
@@ -266,7 +266,7 @@ const HANDOFF_PROMPT = `Write a handoff brief to ${HANDOFF_FILE} so a fresh sess
 let percent = 0
 let contextHealthTokens = 0
 let windowSize = 0
-let rates: { kind: string; percentUsed: number }[] = []
+let contextHealthRates: { kind: string; percentUsed: number }[] = []
 let threshold = 50 // ponytail: stored per session; persist via $.store if wanted across sessions
 let auto = false
 let handingOff = false
@@ -507,7 +507,7 @@ function filetreeTouch($: any, path: string | undefined, state: State) {
   if (!path) return
   const abs = path.startsWith('/') ? path : `${root}/${path}`
   touched.set(abs, { state, at: Date.now() })
-  dismissed = false // a new filetreeTouch brings the band back
+  dismissed = false // a new touch brings the band back
   for (let d = dirOf(abs); d.length > root.length; d = dirOf(d)) open.add(d)
   if (state === 'edited' || state === 'editing') allFiles = undefined
   void rebuild($)
