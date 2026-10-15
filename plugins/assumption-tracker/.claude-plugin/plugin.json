@@ -1,5 +1,0 @@
-{
-  "name": "assumption-tracker",
-  "version": "0.1.0",
-  "description": "Lists the assumptions Claude made and sends fixes for the ones you mark wrong"
-}

@@ -1,5 +1,0 @@
-{
-  "name": "filetree",
-  "version": "0.1.0",
-  "description": "File tree pane with git status and highlights for files Claude reads and writes"
-}

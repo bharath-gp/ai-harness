@@ -1,5 +1,0 @@
-{
-  "name": "self-critique",
-  "version": "0.1.0",
-  "description": "/critique panel that reviews Claude's last answer, with one-click fixes"
-}
