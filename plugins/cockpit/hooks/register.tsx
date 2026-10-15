@@ -1007,15 +1007,12 @@ export async function usageLimitsUiRenderAbovePrompt($: any, e: any, next: any) 
   if (e.props.hasSurvey || !usageLimitRates.length) return next(e)
   const now = await $.clock.now()
   const left = (r: { resetsAt?: string }) => (r.resetsAt ? Date.parse(r.resetsAt) - now : 0)
-  const main = usageLimitRates.find(r => r.kind === 'five_hour') ?? usageLimitRates[0]
-  const rest = usageLimitRates.filter(r => r !== main)
-  const mainLeft = left(main)
+  const rates = [...usageLimitRates].sort((a, b) => (a.kind === 'five_hour' ? -1 : 0) - (b.kind === 'five_hour' ? -1 : 0))
   return band($.ui.resolve(e), e, await below(next, e), {
-    title: main.kind === 'five_hour' ? 'Session limit' : 'Weekly limit',
-    tone: zoneTone(Math.max(...usageLimitRates.map(r => r.percentUsed)), 70, 90),
-    pct: main.percentUsed,
-    detail: [mainLeft > 0 ? `resets in ${usageLeft(mainLeft)}` : 'reset pending', ...(mainLeft > 0 ? [usagePace(main, mainLeft)] : [])].join(' · '),
-    right: rest.map(r => `${LIMIT_SHORT[r.kind]} ${Math.round(r.percentUsed)}%${left(r) > 0 ? ` · ${usageLeft(left(r))}` : ''}`).join('  ') || undefined,
+    title: 'Usage limits',
+    tone: zoneTone(Math.max(...rates.map(r => r.percentUsed)), 70, 90),
+    detail: rates.map(r => `${LIMIT_SHORT[r.kind]} ${left(r) > 0 ? `resets in ${usageLeft(left(r))} · ${usagePace(r, left(r))}` : 'reset pending'}`).join('  ·  '),
+    bars: rates.map(r => ({ pct: r.percentUsed, label: LIMIT_SHORT[r.kind], tone: zoneTone(r.percentUsed, 70, 90) })),
   })
 }
 

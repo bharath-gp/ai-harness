@@ -8,6 +8,7 @@ export type BandSpec = {
   tone: Tone
   detail?: string
   pct?: number // 0-100: a ring (ring: true) or a pill bar
+  bars?: { pct: number; label: string; tone?: Tone }[] // several pill bars in one band (label inside the pill), instead of pct
   pctLabel?: string // text inside the pill bar, e.g. "Review 3/4"
   ring?: boolean
   busy?: boolean // pulse the dot
@@ -19,7 +20,7 @@ export type BandSpec = {
 }
 
 const H = 36
-const ACTION_COLS = 22 // fixed button column, so buttons line up under each other in every band
+const ACTION_COLS = 17 // fixed button column, so buttons line up under each other in every band
 const RIGHT_PX = 250 // fixed right region (bar, chips, side text): titles truncate at the same x in every band
 
 // The band above the prompt: one card, same anatomy in every mod. `nested` is `await below(next, e)` (the bands beneath),
@@ -27,6 +28,7 @@ const RIGHT_PX = 250 // fixed right region (bar, chips, side text): titles trunc
 export const band = (ui: any, e: any, nested: unknown, s: BandSpec) => {
   const { Box, Text, Button } = ui
   const color = P[s.tone]
+  const bars = s.bars ?? (s.pct !== undefined && !s.ring ? [{ pct: s.pct, label: s.pctLabel ?? '', tone: undefined }] : [])
   const buttons = (s.buttons ?? []).map(b => <Button key={b.key} label={b.label} hotkey={b.hotkey} plain={b.plain} onPress={b.onPress} />)
   const rows = (s.rows ?? []).map(r => (
     <Button key={r.key} plain hotkey={r.hotkey} onPress={r.onPress}>
@@ -53,18 +55,20 @@ export const band = (ui: any, e: any, nested: unknown, s: BandSpec) => {
     }
     const tx = 38
     body += s.ring && s.pct !== undefined ? ring(20, 18, 9, s.pct, color, s.busy) : dot(20, 18, color, s.busy)
-    const barW = s.pct !== undefined && !s.ring ? 170 : 0
-    const hasRight = Boolean(barW || s.chips?.length || s.right)
-    const textW = Math.max(120, W - tx - 16 - (hasRight ? RIGHT_PX : 0))
+    const barW = bars.length > 1 ? 130 : bars.length ? 170 : 0
+    const hasRight = Boolean(bars.length || s.chips?.length || s.right)
+    const textW = Math.max(120, W - tx - 16 - (hasRight ? RIGHT_PX + Math.max(0, bars.length - 1) * (barW + 56) : 0))
     body += text(tx, s.detail ? 16 : 22, fit(s.title, textW, 13), { size: 13, weight: 600 })
     if (s.detail) body += text(tx, 29, fit(s.detail, textW, 11), { size: 11, cls: 'm' })
-    if (barW) {
+    for (const b of [...bars].reverse()) {
       // pill bar with its label inside, as in savvy-progress, then the percent
+      const bc = b.tone ? P[b.tone] : color
       const bx = right - barW - 44
-      const fillW = Math.max(26, (Math.min(100, s.pct!) / 100) * barW)
-      body += `<defs><clipPath id="pb${bx}"><rect x="${bx}" y="9" width="${barW}" height="18" rx="9"/></clipPath></defs><rect class="k" x="${bx}" y="9" width="${barW}" height="18" rx="9"/><g clip-path="url(#pb${bx})"><rect${s.busy ? ' class="live"' : ''} x="${bx}" y="9" width="${fillW}" height="18" rx="9" fill="${color}"/></g>`
-      if (s.pctLabel) body += text(bx + fillW / 2, 22, fit(s.pctLabel, fillW - 8, 11), { size: 11, weight: 700, anchor: 'middle', fill: '#1b1d22' })
-      body += text(bx + barW + 8, 22, `${Math.round(s.pct!)}%`, { size: 12, cls: 'm' })
+      const fillW = Math.max(26, (Math.min(100, b.pct) / 100) * barW)
+      body += `<defs><clipPath id="pb${bx}"><rect x="${bx}" y="9" width="${barW}" height="18" rx="9"/></clipPath></defs><rect class="k" x="${bx}" y="9" width="${barW}" height="18" rx="9"/><g clip-path="url(#pb${bx})"><rect${s.busy ? ' class="live"' : ''} x="${bx}" y="9" width="${fillW}" height="18" rx="9" fill="${bc}"/></g>`
+      if (b.label) body += text(bx + fillW / 2, 22, fit(b.label, fillW - 8, 11), { size: 11, weight: 700, anchor: 'middle', fill: '#1b1d22' })
+      body += text(bx + barW + 8, 22, `${Math.round(b.pct)}%`, { size: 12, cls: 'm' })
+      right = bx - 12
     }
     return (
       <Box flexDirection="column">
@@ -84,8 +88,9 @@ export const band = (ui: any, e: any, nested: unknown, s: BandSpec) => {
     <Box flexDirection="column">
       <Box flexDirection="row" gap={1}>
         <Text color={color} bold>● {s.title}</Text>
-        {s.pct !== undefined && <Text color={color}>{hbar(s.pct, 10)}</Text>}
-        {s.pct !== undefined && <Text color={P.muted}>{Math.round(s.pct)}%</Text>}
+        {bars.map(b => (
+          <Text key={b.label || 'bar'} color={b.tone ? P[b.tone] : color}>{b.label ? `${b.label} ` : ''}{hbar(b.pct, 10)} {Math.round(b.pct)}%</Text>
+        ))}
         {s.detail && <Text color={P.muted}>{s.detail}</Text>}
         {(s.chips ?? []).map(c => (
           <Text key={c} color={color}>[{c}]</Text>
