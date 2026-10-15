@@ -1,12 +1,12 @@
 {
   "name": "cockpit",
-  "version": "0.1.5",
+  "version": "0.1.7",
   "description": "Live panes and bands for session awareness: agents-progress, cache-keeper, context-health, filetree, next-steps",
   "userConfig": {
     "agentsProgress": {
       "type": "boolean",
       "title": "agents-progress",
-      "description": "Live subagent panel and a running-agents band above the prompt",
+      "description": "Live subagent panel, a running-agents band and a main-session todo/task progress band above the prompt",
       "default": true
     },
     "cacheKeeper": {

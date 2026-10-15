@@ -11,6 +11,8 @@ let subTools = 0 // tool calls made inside subagents; ponytail: not split per ag
 let cost = 0
 let ctxTokens = 0
 let showFinished = true
+type Todo = { id?: string; content: string; status: string; activeForm?: string }
+let todos: Todo[] = [] // main session's TodoWrite list, or its TaskCreate/TaskUpdate tasks (keyed by id)
 
 function agentsProgressRedraw($: any) { return $.ui.invalidate('ui.render') }
 const running = () => agents.filter(a => a.endedAt === undefined)
@@ -53,22 +55,60 @@ export async function agentsProgressAgentSpawn($: any, e: any, next: any) {
   return r
 }
 
-export function agentsProgressToolCall($: any, e: any, next: any) {
-  if (e.agentId !== undefined) subTools += 1
+export async function agentsProgressToolCall($: any, e: any, next: any) {
+  if (e.agentId !== undefined) {
+    subTools += 1
+    return next(e)
+  }
+  if (e.tool === 'TodoWrite' && Array.isArray(e.todos)) {
+    todos = e.todos
+    agentsProgressRedraw($)
+  } else if (e.tool === 'TaskCreate') {
+    const r = await next(e)
+    const id = r.result?.task?.id
+    if (id !== undefined && !r.isError) {
+      todos = [...todos, { id: String(id), content: e.subject, status: 'pending', activeForm: e.activeForm }]
+      agentsProgressRedraw($)
+    }
+    return r
+  } else if (e.tool === 'TaskUpdate') {
+    const r = await next(e)
+    if (!r.isError && r.deny === undefined) {
+      todos = (e.status === 'deleted'
+        ? todos.filter(t => t.id !== e.taskId)
+        : todos.map(t => (t.id === e.taskId ? { ...t, content: e.subject ?? t.content, status: e.status ?? t.status, activeForm: e.activeForm ?? t.activeForm } : t)))
+      agentsProgressRedraw($)
+    }
+    return r
+  }
   return next(e)
 }
 
 export async function agentsProgressUiRenderAbovePrompt($: any, e: any, next: any) {
+  if (e.props.hasSurvey) return next(e)
+  const ui = $.ui.resolve(e)
   const live = running()
-  if (e.props.hasSurvey || live.length === 0) return next(e)
-  return band($.ui.resolve(e), e, await below(next, e), {
-    title: 'Agents',
+  let nested = await below(next, e)
+  if (live.length) {
+    nested = band(ui, e, nested, {
+      title: 'Agents',
+      tone: 'accent',
+      busy: true,
+      pct: pctDone(),
+      pctLabel: `${live.length} running · ${finished().length}/${agents.length}`,
+      detail: undefined,
+      buttons: [{ key: 'open', label: `×${agents.length}`, plain: true, onPress: () => $.ui.open({ id: 'agents', title: 'Agents' }) }],
+    })
+  }
+  const done = todos.filter(t => t.status === 'completed').length
+  if (todos.length === 0 || done === todos.length) return nested
+  const cur = todos.find(t => t.status === 'in_progress')
+  return band(ui, e, nested, {
+    title: cur ? cur.activeForm || cur.content : 'Next: ' + (todos.find(t => t.status !== 'completed')?.content ?? ''),
     tone: 'accent',
-    busy: true,
-    pct: pctDone(),
-    pctLabel: `${live.length} running · ${finished().length}/${agents.length}`,
-    detail: undefined,
-    buttons: [{ key: 'open', label: `×${agents.length}`, plain: true, onPress: () => $.ui.open({ id: 'agents', title: 'Agents' }) }],
+    busy: Boolean(cur),
+    pct: (done / todos.length) * 100,
+    pctLabel: `Progress ${done}/${todos.length}`,
   })
 }
 
