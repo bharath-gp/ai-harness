@@ -1,7 +1,7 @@
 {
   "name": "cockpit",
-  "version": "0.1.9",
-  "description": "Live panes and bands for session awareness: agents-progress, cache-keeper, context-health, filetree, next-steps, usage-limits",
+  "version": "0.1.10",
+  "description": "Live panes and bands for session awareness: agents-progress, cockpit-pane, cache-keeper, context-health, filetree, next-steps, usage-limits",
   "userConfig": {
     "agentsProgress": {
       "type": "boolean",
@@ -13,6 +13,12 @@
       "type": "boolean",
       "title": "cache-keeper",
       "description": "Cache countdown band, /keepwarm pings and a cold-send guard with cost estimate",
+      "default": true
+    },
+    "cockpitPane": {
+      "type": "boolean",
+      "title": "cockpit-pane",
+      "description": "Docked pane repeating the context, usage-limit and progress bands, so they stay visible when a desktop dialog hides the prompt area; /cockpit reopens it",
       "default": true
     },
     "contextHealth": {

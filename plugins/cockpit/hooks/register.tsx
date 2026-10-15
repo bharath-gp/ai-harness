@@ -1061,10 +1061,45 @@ export async function nextStepsUiRenderAbovePrompt($: any, e: any, next: any) {
   })
 }
 
+// ===== cockpit-pane =====
+const COCKPIT_PANE = { id: 'cockpit', title: 'Cockpit' }
+
+export async function cockpitPaneSessionStart($: any, e: any, next: any) {
+  await $.command.register({ name: 'cockpit', description: 'Open the cockpit pane (context, limits, progress)' })
+  await $.ui.open(COCKPIT_PANE)
+  return next(e)
+}
+
+export async function cockpitPaneCommandRun($: any, e: any, next: any) {
+  const r = await $.ui.open(COCKPIT_PANE)
+  return { text: r.isPlaced ? 'Cockpit pane opened.' : 'No surface can draw the cockpit pane here.' }
+}
+
+export async function cockpitPaneRender($: any, e: any, bands: (e: any) => unknown) {
+  const { Box, Text } = $.ui.resolve(e)
+  const drawn = await Promise.resolve(bands({ ...e, props: { ...e.props, hasSurvey: false } })).catch(() => null)
+  return (
+    <Box flexDirection="column" gap={1}>
+      {drawn ?? <Text color={P.muted}>Nothing to show yet. Bands appear here as they have data.</Text>}
+    </Box>
+  )
+}
+
+export function cockpitBands($: any, e: any, next: any, options: any) {
+  const n6 = (x: any) => next(x)
+  const n5 = (x: any) => (options.nextSteps === false ? n6(x) : nextStepsUiRenderAbovePrompt($, x, n6))
+  const n4 = (x: any) => (options.usageLimits === false ? n5(x) : usageLimitsUiRenderAbovePrompt($, x, n5))
+  const n3 = (x: any) => (options.filetree === false ? n4(x) : filetreeUiRenderAbovePrompt($, x, n4))
+  const n2 = (x: any) => (options.contextHealth === false ? n3(x) : contextHealthUiRenderAbovePrompt($, x, n3))
+  const n1 = (x: any) => (options.cacheKeeper === false ? n2(x) : cacheKeeperUiRenderAbovePrompt($, x, n2))
+  return options.agentsProgress === false ? n1(e) : agentsProgressUiRenderAbovePrompt($, e, n1)
+}
+
 // Each mod is on unless its userConfig flag is false (toggle in the config menu; the module reloads).
 export const register: Register = (on, options) => {
   on('session.start', ($, e, next) => {
-    const n5 = (x: any) => next(x)
+    const n6 = (x: any) => next(x)
+    const n5 = (x: any) => (options.cockpitPane === false ? n6(x) : cockpitPaneSessionStart($, x, n6))
     const n4 = (x: any) => (options.usageLimits === false ? n5(x) : usageLimitsSessionStart($, x, n5))
     const n3 = (x: any) => (options.filetree === false ? n4(x) : filetreeSessionStart($, x, n4))
     const n2 = (x: any) => (options.contextHealth === false ? n3(x) : contextHealthSessionStart($, x, n3))
@@ -1079,15 +1114,10 @@ export const register: Register = (on, options) => {
     const n1 = (x: any) => (options.filetree === false ? n2(x) : filetreeToolCall($, x, n2))
     return options.agentsProgress === false ? n1(e) : agentsProgressToolCall($, e, n1)
   })
-  on('ui.render', { component: 'AbovePrompt' }, ($, e, next) => {
-    const n6 = (x: any) => next(x)
-    const n5 = (x: any) => (options.nextSteps === false ? n6(x) : nextStepsUiRenderAbovePrompt($, x, n6))
-    const n4 = (x: any) => (options.usageLimits === false ? n5(x) : usageLimitsUiRenderAbovePrompt($, x, n5))
-    const n3 = (x: any) => (options.filetree === false ? n4(x) : filetreeUiRenderAbovePrompt($, x, n4))
-    const n2 = (x: any) => (options.contextHealth === false ? n3(x) : contextHealthUiRenderAbovePrompt($, x, n3))
-    const n1 = (x: any) => (options.cacheKeeper === false ? n2(x) : cacheKeeperUiRenderAbovePrompt($, x, n2))
-    return options.agentsProgress === false ? n1(e) : agentsProgressUiRenderAbovePrompt($, e, n1)
-  })
+  on('ui.render', { component: 'AbovePrompt' }, ($, e, next) => cockpitBands($, e, next, options))
+  // The same bands in a docked pane: the desktop hides AbovePrompt while its own dialogs hold the prompt area.
+  if (options.cockpitPane !== false) on('command.run', { command: 'cockpit' }, cockpitPaneCommandRun)
+  if (options.cockpitPane !== false) on('ui.render', { component: 'Pane', requestId: 'cockpit' }, ($, e) => cockpitPaneRender($, e, (x: any) => cockpitBands($, x, () => null, options)))
   if (options.agentsProgress !== false) on('ui.render', { component: 'Pane', requestId: 'agents' }, agentsProgressUiRenderPaneAgents)
   if (options.cacheKeeper !== false) on('command.run', { command: 'keepwarm' }, cacheKeeperCommandRunKeepwarm)
   if (options.cacheKeeper !== false) on('command.run', { command: 'cache-tax' }, cacheKeeperCommandRunCacheTax)
