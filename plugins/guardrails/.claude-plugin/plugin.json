@@ -1,6 +1,6 @@
 {
   "name": "guardrails",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Safety and review of Claude's output: blast-radius, secret-sentry, reflect, assumption-tracker, self-critique",
   "userConfig": {
     "blastRadius": {
