@@ -1,5 +1,5 @@
 import type { Register } from 'claude-code'
-import { band, item } from './band'
+import { band, beginPass, endPass, item } from './band'
 import { fileBadge, folderIcon, iconTile, panel, pill, sectionLabel, tile } from './kit'
 import { P, RAMP, type Tone, below, fmtCost, fmtDur, fmtTok, isRich, zoneTone } from './ui'
 
@@ -1007,15 +1007,12 @@ export async function usageLimitsUiRenderAbovePrompt($: any, e: any, next: any) 
   if (e.props.hasSurvey || !usageLimitRates.length) return next(e)
   const now = await $.clock.now()
   const left = (r: { resetsAt?: string }) => (r.resetsAt ? Date.parse(r.resetsAt) - now : 0)
-  const main = usageLimitRates.find(r => r.kind === 'five_hour') ?? usageLimitRates[0]
-  const rest = usageLimitRates.filter(r => r !== main)
-  const mainLeft = left(main)
+  const rates = [...usageLimitRates].sort((a, b) => (a.kind === 'five_hour' ? -1 : 0) - (b.kind === 'five_hour' ? -1 : 0))
   return band($.ui.resolve(e), e, await below(next, e), {
-    title: main.kind === 'five_hour' ? 'Session limit' : 'Weekly limit',
-    tone: zoneTone(Math.max(...usageLimitRates.map(r => r.percentUsed)), 70, 90),
-    pct: main.percentUsed,
-    detail: [mainLeft > 0 ? `resets in ${usageLeft(mainLeft)}` : 'reset pending', ...(mainLeft > 0 ? [usagePace(main, mainLeft)] : [])].join(' · '),
-    right: rest.map(r => `${LIMIT_SHORT[r.kind]} ${Math.round(r.percentUsed)}%${left(r) > 0 ? ` · ${usageLeft(left(r))}` : ''}`).join('  ') || undefined,
+    title: 'Usage limits',
+    tone: zoneTone(Math.max(...rates.map(r => r.percentUsed)), 70, 90),
+    detail: rates.map(r => `${LIMIT_SHORT[r.kind]} ${left(r) > 0 ? `resets in ${usageLeft(left(r))} · ${usagePace(r, left(r))}` : 'reset pending'}`).join('  ·  '),
+    bars: rates.map(r => ({ pct: r.percentUsed, label: LIMIT_SHORT[r.kind], tone: zoneTone(r.percentUsed, 70, 90) })),
   })
 }
 
@@ -1081,14 +1078,17 @@ export const register: Register = (on, options) => {
     const n1 = (x: any) => (options.filetree === false ? n2(x) : filetreeToolCall($, x, n2))
     return options.agentsProgress === false ? n1(e) : agentsProgressToolCall($, e, n1)
   })
-  on('ui.render', { component: 'AbovePrompt' }, ($, e, next) => {
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    beginPass()
     const n6 = (x: any) => next(x)
     const n5 = (x: any) => (options.nextSteps === false ? n6(x) : nextStepsUiRenderAbovePrompt($, x, n6))
     const n4 = (x: any) => (options.usageLimits === false ? n5(x) : usageLimitsUiRenderAbovePrompt($, x, n5))
     const n3 = (x: any) => (options.filetree === false ? n4(x) : filetreeUiRenderAbovePrompt($, x, n4))
     const n2 = (x: any) => (options.contextHealth === false ? n3(x) : contextHealthUiRenderAbovePrompt($, x, n3))
     const n1 = (x: any) => (options.cacheKeeper === false ? n2(x) : cacheKeeperUiRenderAbovePrompt($, x, n2))
-    return options.agentsProgress === false ? n1(e) : agentsProgressUiRenderAbovePrompt($, e, n1)
+    const drawn = await (options.agentsProgress === false ? n1(e) : agentsProgressUiRenderAbovePrompt($, e, n1))
+    if (endPass()) $.ui.invalidate('ui.render')
+    return drawn
   })
   if (options.agentsProgress !== false) on('ui.render', { component: 'Pane', requestId: 'agents' }, agentsProgressUiRenderPaneAgents)
   if (options.cacheKeeper !== false) on('command.run', { command: 'keepwarm' }, cacheKeeperCommandRunKeepwarm)
