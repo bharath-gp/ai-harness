@@ -2,7 +2,7 @@ import type { Register } from 'claude-code'
 
 import { agentsProgressSessionStart, agentsProgressCommandRunAgentsInfo, agentsProgressAgentSpawn, agentsProgressToolCall, agentsProgressUiRenderAbovePrompt, agentsProgressUiRenderPaneAgents } from './agents-progress'
 import { cacheKeeperSessionStart, cacheKeeperUiRenderAbovePrompt, cacheKeeperCommandRunKeepwarm, cacheKeeperCommandRunCacheTax, cacheKeeperPromptSubmit, cacheKeeperTurnComplete } from './cache-keeper'
-import { contextHealthSessionStart, contextHealthUiRenderAbovePrompt, contextHealthTurnComplete, contextHealthCommandRunHandoff, contextHealthCommandRunAutohandoff } from './context-health'
+import { contextHealthSessionStart, contextHealthUiRenderAbovePrompt, contextHealthTurnComplete, contextHealthToolCall, contextHealthPromptSubmit, contextHealthCommandRunHandoff, contextHealthCommandRunAutohandoff } from './context-health'
 import { filetreeSessionStart, filetreeToolCall, filetreeUiRenderAbovePrompt, filetreePromptSubmit, filetreeCommandRunFiletree, filetreeUiRenderPaneFiletree } from './filetree'
 import { nextStepsUiRenderAbovePrompt, nextStepsPromptSubmit, nextStepsTurnComplete } from './next-steps'
 
@@ -18,7 +18,8 @@ export const register: Register = (on, options) => {
   if (options.agentsProgress !== false) on('command.run', { command: 'agents-info' }, agentsProgressCommandRunAgentsInfo)
   if (options.agentsProgress !== false) on('agent.spawn', agentsProgressAgentSpawn)
   on('tool.call', ($, e, next) => {
-    const n2 = (x: any) => next(x)
+    const n3 = (x: any) => next(x)
+    const n2 = (x: any) => (options.contextHealth === false ? n3(x) : contextHealthToolCall($, x, n3))
     const n1 = (x: any) => (options.filetree === false ? n2(x) : filetreeToolCall($, x, n2))
     return options.agentsProgress === false ? n1(e) : agentsProgressToolCall($, e, n1)
   })
@@ -34,7 +35,8 @@ export const register: Register = (on, options) => {
   if (options.cacheKeeper !== false) on('command.run', { command: 'keepwarm' }, cacheKeeperCommandRunKeepwarm)
   if (options.cacheKeeper !== false) on('command.run', { command: 'cache-tax' }, cacheKeeperCommandRunCacheTax)
   on('prompt.submit', ($, e, next) => {
-    const n3 = (x: any) => next(x)
+    const n4 = (x: any) => next(x)
+    const n3 = (x: any) => (options.contextHealth === false ? n4(x) : contextHealthPromptSubmit($, x, n4))
     const n2 = (x: any) => (options.nextSteps === false ? n3(x) : nextStepsPromptSubmit($, x, n3))
     const n1 = (x: any) => (options.filetree === false ? n2(x) : filetreePromptSubmit($, x, n2))
     return options.cacheKeeper === false ? n1(e) : cacheKeeperPromptSubmit($, e, n1)

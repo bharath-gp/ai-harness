@@ -13,7 +13,12 @@ let threshold = 50 // ponytail: stored per session; persist via $.store if wante
 let auto = false
 let handingOff = false
 
-async function refresh($: any) {
+let lastRefresh = 0
+
+async function refresh($: any, force = false) {
+  const now = await $.clock.now()
+  if (!force && now - lastRefresh < 2000) return
+  lastRefresh = now
   const { context, rateLimits } = await $.session.usage()
   percent = Math.round(context.percent ?? 0)
   tokens = context.tokens ?? 0
@@ -48,16 +53,30 @@ export async function contextHealthCommandRunAutohandoff(_$: any, e: any) {
   return { text: auto ? `Auto handoff at ${threshold}% context.` : 'Auto handoff off.' }
 }
 
+// Keep the band live while context grows (tool results) or shrinks (compact/clear).
+export async function contextHealthToolCall($: any, e: any, next: any) {
+  const done = await next(e)
+  if (e.agentId === undefined) await refresh($)
+  return done
+}
+
+export async function contextHealthPromptSubmit($: any, e: any, next: any) {
+  const done = await next(e)
+  await refresh($)
+  return done
+}
+
 export async function contextHealthTurnComplete($: any, e: any, next: any) {
   if (e.agentId !== undefined) return next(e)
   const done = await next(e)
   if (handingOff) {
     handingOff = false
     await $.command.run({ command: 'clear', args: '' })
+    await refresh($, true)
     await $.prompt.fill({ text: `Read ${HANDOFF_FILE} and continue from there.` })
     $.ui.toast('Handoff ready: press Enter to continue in the fresh session.')
   } else {
-    await refresh($)
+    await refresh($, true)
     if (auto && percent >= threshold) startHandoff($)
   }
   return done
