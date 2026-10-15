@@ -370,7 +370,7 @@ export async function assumptionTrackerUiRenderAbovePrompt($: any, e: any, next:
     pct: (reviewed / items.length) * 100,
     buttons: [
       { key: 'review', label: 'Review', hotkey: '0', onPress: () => $.ui.open({ id: 'assumptions', title: 'Assumptions', focus: true, closeOnEscape: true }) },
-      { key: 'skip', label: 'Dismiss', plain: true, onPress: () => { items = []; redraw($) } },
+      { key: 'skip', label: '×', plain: true, onPress: () => { items = []; redraw($) } },
     ],
   })
 }
