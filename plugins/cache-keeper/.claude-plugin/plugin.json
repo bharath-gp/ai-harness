@@ -1,5 +1,0 @@
-{
-  "name": "cache-keeper",
-  "version": "0.1.0",
-  "description": "Cache countdown band, /keepwarm pings and a cold-send guard with cost estimate"
-}

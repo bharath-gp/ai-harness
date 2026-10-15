@@ -1,0 +1,37 @@
+{
+  "name": "cockpit",
+  "version": "0.1.0",
+  "description": "Live panes and bands for session awareness: agents-progress, cache-keeper, context-health, filetree, next-steps",
+  "userConfig": {
+    "agentsProgress": {
+      "type": "boolean",
+      "title": "agents-progress",
+      "description": "Live subagent panel and a running-agents band above the prompt",
+      "default": true
+    },
+    "cacheKeeper": {
+      "type": "boolean",
+      "title": "cache-keeper",
+      "description": "Cache countdown band, /keepwarm pings and a cold-send guard with cost estimate",
+      "default": true
+    },
+    "contextHealth": {
+      "type": "boolean",
+      "title": "context-health",
+      "description": "Context fill band with warnings, /handoff and /autohandoff",
+      "default": true
+    },
+    "filetree": {
+      "type": "boolean",
+      "title": "filetree",
+      "description": "File tree pane with git status and highlights for files Claude reads and writes",
+      "default": true
+    },
+    "nextSteps": {
+      "type": "boolean",
+      "title": "next-steps",
+      "description": "Suggests three next prompts after each turn",
+      "default": true
+    }
+  }
+}

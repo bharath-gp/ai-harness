@@ -1,0 +1,37 @@
+{
+  "name": "guardrails",
+  "version": "0.1.0",
+  "description": "Safety and review of Claude's output: blast-radius, secret-sentry, reflect, assumption-tracker, self-critique",
+  "userConfig": {
+    "blastRadius": {
+      "type": "boolean",
+      "title": "blast-radius",
+      "description": "Asks before destructive shell commands run",
+      "default": true
+    },
+    "secretSentry": {
+      "type": "boolean",
+      "title": "secret-sentry",
+      "description": "Blocks API keys and private keys from being written into files",
+      "default": true
+    },
+    "reflect": {
+      "type": "boolean",
+      "title": "reflect",
+      "description": "Spots corrections in your prompts and saves them as rules in CLAUDE.md",
+      "default": true
+    },
+    "assumptionTracker": {
+      "type": "boolean",
+      "title": "assumption-tracker",
+      "description": "Lists the assumptions Claude made and sends fixes for the ones you mark wrong",
+      "default": true
+    },
+    "selfCritique": {
+      "type": "boolean",
+      "title": "self-critique",
+      "description": "/critique panel that reviews Claude's last answer, with one-click fixes",
+      "default": true
+    }
+  }
+}
