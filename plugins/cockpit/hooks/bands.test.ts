@@ -36,3 +36,17 @@ test('filetree pane draws', async ($, on) => {
   await new Promise(r => setTimeout(r, 50))
   for (const surface of ['terminal', 'desktop']) expect(JSON.stringify(await render($, surface, 'Pane', 'filetree'))).toContain('a.ts')
 })
+
+test('context-health band shows turn, cost and dismiss', async ($, on) => {
+  let usd = 1
+  on('session.usage', () => ({ value: { context: { percent: 42, tokens: 84000, window: 200000 }, rateLimits: [], cost: { usd } } }) as never)
+  on('clock.now', () => ({ value: 1_000_000 }) as never)
+  on('turn.start', () => ({ turnId: 't' }) as never)
+  on('prompt.submit', () => ({ text: 'hi' }) as never)
+  await ($ as any).turn.start({ turnId: 't' })
+  usd = 1.5
+  await ($ as any).prompt.submit({ text: 'hi', wait: false, origin: { kind: 'composer' } })
+  const out = JSON.stringify(await render($, 'terminal', 'AbovePrompt'))
+  expect(out).toContain('turn 1')
+  expect(out).toContain('×')
+})
