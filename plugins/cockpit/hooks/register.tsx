@@ -469,6 +469,7 @@ async function walk($: any, dir: string, depth: number, out: Row[], expand: (p: 
     if (out.length >= 2500) return
     const path = `${dir}/${x.name}`
     out.push({ path, name: x.name, depth, isDir: x.kind === 'dir', size: x.size, mtime: x.mtimeMs })
+    if (x.kind === 'dir' && expand(path) && x.name !== '.git') await walk($, path, depth + 1, out, expand)
   }
 }
 
