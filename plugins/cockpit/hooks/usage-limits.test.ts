@@ -13,7 +13,6 @@ test('usage-limits band shows session and weekly windows', async ($, on) => {
     const out = JSON.stringify(await $.ui.render({ surface, component: 'AbovePrompt', props: { bodyColumns: 80, hasSurvey: false }, viewport: { columns: 80, rows: 30 } } as never))
     expect(out).toContain('Session limit')
     expect(out).toContain('resets in 2h00m')
-    expect(out).toContain('Weekly limit')
-    expect(out).toContain('resets in 3d1h')
+    expect(out).toContain('7d 18% · 3d1h')
   }
 })

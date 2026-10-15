@@ -19,7 +19,7 @@ export type BandSpec = {
 }
 
 const H = 36
-const ACTION_COLS = 29 // fixed button column, so buttons line up under each other in every band
+const ACTION_COLS = 22 // fixed button column, so buttons line up under each other in every band
 const RIGHT_PX = 250 // fixed right region (bar, chips, side text): titles truncate at the same x in every band
 
 // The band above the prompt: one card, same anatomy in every mod. `nested` is `await below(next, e)` (the bands beneath),
