@@ -1,5 +1,5 @@
 import type { Register } from 'claude-code'
-import { band, paneHeader } from './band'
+import { band, beginPass, endPass, paneHeader } from './band'
 import { folderIcon, iconTile, textCard } from './kit'
 import { P, type Tone, bar, below, fit, isRich, svg } from './ui'
 
@@ -538,10 +538,13 @@ export const register: Register = (on, options) => {
     const n1 = (x: any) => (options.assumptionTracker === false ? n2(x) : assumptionTrackerPromptSubmit($, x, n2))
     return options.reflect === false ? n1(e) : reflectPromptSubmit($, e, n1)
   })
-  on('ui.render', { component: 'AbovePrompt' }, ($, e, next) => {
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    beginPass()
     const n2 = (x: any) => next(x)
     const n1 = (x: any) => (options.assumptionTracker === false ? n2(x) : assumptionTrackerUiRenderAbovePrompt($, x, n2))
-    return options.reflect === false ? n1(e) : reflectUiRenderAbovePrompt($, e, n1)
+    const drawn = await (options.reflect === false ? n1(e) : reflectUiRenderAbovePrompt($, e, n1))
+    if (endPass()) $.ui.invalidate('ui.render')
+    return drawn
   })
   if (options.assumptionTracker !== false) on('command.run', { command: 'assumptions' }, assumptionTrackerCommandRunAssumptions)
   on('turn.complete', ($, e, next) => {

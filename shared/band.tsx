@@ -20,7 +20,18 @@ export type BandSpec = {
 }
 
 const H = 36
-const ACTION_COLS = 17 // fixed button column, so buttons line up under each other in every band
+// Button column: as wide as the widest button set in the last pass (never under MIN_ACTION_COLS, so it matches across plugins),
+// the same in every band so the buttons line up. A render pass is `beginPass()` ... `endPass()` around the AbovePrompt chain.
+const MIN_ACTION_COLS = 13
+let actionCols = MIN_ACTION_COLS
+let needs: Record<string, number> = {}
+const widest = () => Math.max(MIN_ACTION_COLS, ...Object.values(needs))
+export const beginPass = () => {
+  actionCols = widest()
+  needs = {}
+}
+// true when this pass found a different width: the caller redraws once so every band uses it
+export const endPass = () => widest() !== actionCols
 const RIGHT_PX = 250 // fixed right region (bar, chips, side text): titles truncate at the same x in every band
 
 // The band above the prompt: one card, same anatomy in every mod. `nested` is `await below(next, e)` (the bands beneath),
@@ -29,6 +40,9 @@ export const band = (ui: any, e: any, nested: unknown, s: BandSpec) => {
   const { Box, Text, Button } = ui
   const color = P[s.tone]
   const bars = s.bars ?? (s.pct !== undefined && !s.ring ? [{ pct: s.pct, label: s.pctLabel ?? '', tone: undefined }] : [])
+  const bs = s.buttons ?? []
+  needs[s.title] = bs.reduce((n, b) => n + b.label.length + (b.plain ? 1 : 2) + (b.hotkey ? 2 : 0) + 1, 1)
+  const ACTION_COLS = actionCols
   const buttons = (s.buttons ?? []).map(b => <Button key={b.key} label={b.label} hotkey={b.hotkey} plain={b.plain} onPress={b.onPress} />)
   const rows = (s.rows ?? []).map(r => (
     <Button key={r.key} plain hotkey={r.hotkey} onPress={r.onPress}>
