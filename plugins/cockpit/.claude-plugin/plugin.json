@@ -1,6 +1,6 @@
 {
   "name": "cockpit",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "description": "Live panes and bands for session awareness: agents-progress, cockpit-pane, cache-keeper, context-health, filetree, next-steps, usage-limits",
   "userConfig": {
     "agentsProgress": {

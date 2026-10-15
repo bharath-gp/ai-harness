@@ -992,7 +992,9 @@ const usagePace = (r: { kind: string; percentUsed: number }, ms: number) => {
 }
 
 export async function usageLimitsSessionStart($: any, e: any, next: any) {
-  usageLimitsSet($, (await $.session.usage()).rateLimits)
+  const sync = async () => usageLimitsSet($, (await $.session.usage()).rateLimits)
+  await sync()
+  $.clock.every(15_000, sync) // measure only fires on whole-point moves; this keeps the bars and countdowns fresh
   return next(e)
 }
 
@@ -1003,18 +1005,20 @@ export async function usageLimitsSessionMeasure($: any, e: any, next: any) {
 
 export async function usageLimitsUiRenderAbovePrompt($: any, e: any, next: any) {
   if (e.props.hasSurvey || !usageLimitRates.length) return next(e)
+  const ui = $.ui.resolve(e)
   const now = await $.clock.now()
-  const left = (r: { resetsAt?: string }) => (r.resetsAt ? Date.parse(r.resetsAt) - now : 0)
-  const main = usageLimitRates.find(r => r.kind === 'five_hour') ?? usageLimitRates[0]
-  const rest = usageLimitRates.filter(r => r !== main)
-  const mainLeft = left(main)
-  return band($.ui.resolve(e), e, await below(next, e), {
-    title: main.kind === 'five_hour' ? 'Session limit' : 'Weekly limit',
-    tone: zoneTone(Math.max(...usageLimitRates.map(r => r.percentUsed)), 70, 90),
-    pct: main.percentUsed,
-    detail: [mainLeft > 0 ? `resets in ${usageLeft(mainLeft)}` : 'reset pending', ...(mainLeft > 0 ? [usagePace(main, mainLeft)] : [])].join(' · '),
-    right: rest.map(r => `${LIMIT_SHORT[r.kind]} ${Math.round(r.percentUsed)}%${left(r) > 0 ? ` · ${usageLeft(left(r))}` : ''}`).join('  ') || undefined,
-  })
+  let nested = await below(next, e)
+  // One bar per window, 7d first so the 5h session bar ends up on top.
+  for (const r of [...usageLimitRates].sort((a, b) => (a.kind === 'five_hour' ? 1 : 0) - (b.kind === 'five_hour' ? 1 : 0))) {
+    const ms = r.resetsAt ? Date.parse(r.resetsAt) - now : 0
+    nested = band(ui, e, nested, {
+      title: r.kind === 'five_hour' ? 'Session limit' : 'Weekly limit',
+      tone: zoneTone(r.percentUsed, 70, 90),
+      pct: r.percentUsed,
+      detail: [ms > 0 ? `resets in ${usageLeft(ms)}` : 'reset pending', ...(ms > 0 ? [usagePace(r, ms)] : [])].join(' · '),
+    })
+  }
+  return nested
 }
 
 // ===== next-steps =====
