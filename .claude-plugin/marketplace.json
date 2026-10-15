@@ -12,7 +12,7 @@
     {
       "name": "cockpit",
       "source": "./plugins/cockpit",
-      "description": "Live panes and bands for session awareness: agents-progress, cache-keeper, context-health, filetree, next-steps, usage-limits"
+      "description": "Live panes and bands for session awareness: agents-progress, cache-keeper, cockpit-pane, context-health, filetree, next-steps, usage-limits"
     }
   ]
 }

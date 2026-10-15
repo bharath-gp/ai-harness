@@ -992,7 +992,9 @@ const usagePace = (r: { kind: string; percentUsed: number }, ms: number) => {
 }
 
 export async function usageLimitsSessionStart($: any, e: any, next: any) {
-  usageLimitsSet($, (await $.session.usage()).rateLimits)
+  const sync = async () => usageLimitsSet($, (await $.session.usage()).rateLimits)
+  await sync()
+  $.clock.every(15_000, sync) // measure only fires on whole-point moves; this keeps the bars and countdowns fresh
   return next(e)
 }
 
@@ -1003,18 +1005,20 @@ export async function usageLimitsSessionMeasure($: any, e: any, next: any) {
 
 export async function usageLimitsUiRenderAbovePrompt($: any, e: any, next: any) {
   if (e.props.hasSurvey || !usageLimitRates.length) return next(e)
+  const ui = $.ui.resolve(e)
   const now = await $.clock.now()
-  const left = (r: { resetsAt?: string }) => (r.resetsAt ? Date.parse(r.resetsAt) - now : 0)
-  const main = usageLimitRates.find(r => r.kind === 'five_hour') ?? usageLimitRates[0]
-  const rest = usageLimitRates.filter(r => r !== main)
-  const mainLeft = left(main)
-  return band($.ui.resolve(e), e, await below(next, e), {
-    title: main.kind === 'five_hour' ? 'Session limit' : 'Weekly limit',
-    tone: zoneTone(Math.max(...usageLimitRates.map(r => r.percentUsed)), 70, 90),
-    pct: main.percentUsed,
-    detail: [mainLeft > 0 ? `resets in ${usageLeft(mainLeft)}` : 'reset pending', ...(mainLeft > 0 ? [usagePace(main, mainLeft)] : [])].join(' · '),
-    right: rest.map(r => `${LIMIT_SHORT[r.kind]} ${Math.round(r.percentUsed)}%${left(r) > 0 ? ` · ${usageLeft(left(r))}` : ''}`).join('  ') || undefined,
-  })
+  let nested = await below(next, e)
+  // One bar per window, 7d first so the 5h session bar ends up on top.
+  for (const r of [...usageLimitRates].sort((a, b) => (a.kind === 'five_hour' ? 1 : 0) - (b.kind === 'five_hour' ? 1 : 0))) {
+    const ms = r.resetsAt ? Date.parse(r.resetsAt) - now : 0
+    nested = band(ui, e, nested, {
+      title: r.kind === 'five_hour' ? 'Session limit' : 'Weekly limit',
+      tone: zoneTone(r.percentUsed, 70, 90),
+      pct: r.percentUsed,
+      detail: [ms > 0 ? `resets in ${usageLeft(ms)}` : 'reset pending', ...(ms > 0 ? [usagePace(r, ms)] : [])].join(' · '),
+    })
+  }
+  return nested
 }
 
 // ===== next-steps =====
@@ -1061,10 +1065,45 @@ export async function nextStepsUiRenderAbovePrompt($: any, e: any, next: any) {
   })
 }
 
+// ===== cockpit-pane =====
+const COCKPIT_PANE = { id: 'cockpit', title: 'Cockpit' }
+
+export async function cockpitPaneSessionStart($: any, e: any, next: any) {
+  await $.command.register({ name: 'cockpit', description: 'Open the cockpit pane (context, limits, progress)' })
+  await $.ui.open(COCKPIT_PANE)
+  return next(e)
+}
+
+export async function cockpitPaneCommandRun($: any, e: any, next: any) {
+  const r = await $.ui.open(COCKPIT_PANE)
+  return { text: r.isPlaced ? 'Cockpit pane opened.' : 'No surface can draw the cockpit pane here.' }
+}
+
+export async function cockpitPaneRender($: any, e: any, bands: (e: any) => unknown) {
+  const { Box, Text } = $.ui.resolve(e)
+  const drawn = await Promise.resolve(bands({ ...e, props: { ...e.props, hasSurvey: false } })).catch(() => null)
+  return (
+    <Box flexDirection="column" gap={1}>
+      {drawn ?? <Text color={P.muted}>Nothing to show yet. Bands appear here as they have data.</Text>}
+    </Box>
+  )
+}
+
+export function cockpitBands($: any, e: any, next: any, options: any) {
+  const n6 = (x: any) => next(x)
+  const n5 = (x: any) => (options.nextSteps === false ? n6(x) : nextStepsUiRenderAbovePrompt($, x, n6))
+  const n4 = (x: any) => (options.usageLimits === false ? n5(x) : usageLimitsUiRenderAbovePrompt($, x, n5))
+  const n3 = (x: any) => (options.filetree === false ? n4(x) : filetreeUiRenderAbovePrompt($, x, n4))
+  const n2 = (x: any) => (options.contextHealth === false ? n3(x) : contextHealthUiRenderAbovePrompt($, x, n3))
+  const n1 = (x: any) => (options.cacheKeeper === false ? n2(x) : cacheKeeperUiRenderAbovePrompt($, x, n2))
+  return options.agentsProgress === false ? n1(e) : agentsProgressUiRenderAbovePrompt($, e, n1)
+}
+
 // Each mod is on unless its userConfig flag is false (toggle in the config menu; the module reloads).
 export const register: Register = (on, options) => {
   on('session.start', ($, e, next) => {
-    const n5 = (x: any) => next(x)
+    const n6 = (x: any) => next(x)
+    const n5 = (x: any) => (options.cockpitPane === false ? n6(x) : cockpitPaneSessionStart($, x, n6))
     const n4 = (x: any) => (options.usageLimits === false ? n5(x) : usageLimitsSessionStart($, x, n5))
     const n3 = (x: any) => (options.filetree === false ? n4(x) : filetreeSessionStart($, x, n4))
     const n2 = (x: any) => (options.contextHealth === false ? n3(x) : contextHealthSessionStart($, x, n3))
@@ -1079,15 +1118,10 @@ export const register: Register = (on, options) => {
     const n1 = (x: any) => (options.filetree === false ? n2(x) : filetreeToolCall($, x, n2))
     return options.agentsProgress === false ? n1(e) : agentsProgressToolCall($, e, n1)
   })
-  on('ui.render', { component: 'AbovePrompt' }, ($, e, next) => {
-    const n6 = (x: any) => next(x)
-    const n5 = (x: any) => (options.nextSteps === false ? n6(x) : nextStepsUiRenderAbovePrompt($, x, n6))
-    const n4 = (x: any) => (options.usageLimits === false ? n5(x) : usageLimitsUiRenderAbovePrompt($, x, n5))
-    const n3 = (x: any) => (options.filetree === false ? n4(x) : filetreeUiRenderAbovePrompt($, x, n4))
-    const n2 = (x: any) => (options.contextHealth === false ? n3(x) : contextHealthUiRenderAbovePrompt($, x, n3))
-    const n1 = (x: any) => (options.cacheKeeper === false ? n2(x) : cacheKeeperUiRenderAbovePrompt($, x, n2))
-    return options.agentsProgress === false ? n1(e) : agentsProgressUiRenderAbovePrompt($, e, n1)
-  })
+  on('ui.render', { component: 'AbovePrompt' }, ($, e, next) => cockpitBands($, e, next, options))
+  // The same bands in a docked pane: the desktop hides AbovePrompt while its own dialogs hold the prompt area.
+  if (options.cockpitPane !== false) on('command.run', { command: 'cockpit' }, cockpitPaneCommandRun)
+  if (options.cockpitPane !== false) on('ui.render', { component: 'Pane', requestId: 'cockpit' }, ($, e) => cockpitPaneRender($, e, (x: any) => cockpitBands($, x, () => null, options)))
   if (options.agentsProgress !== false) on('ui.render', { component: 'Pane', requestId: 'agents' }, agentsProgressUiRenderPaneAgents)
   if (options.cacheKeeper !== false) on('command.run', { command: 'keepwarm' }, cacheKeeperCommandRunKeepwarm)
   if (options.cacheKeeper !== false) on('command.run', { command: 'cache-tax' }, cacheKeeperCommandRunCacheTax)
