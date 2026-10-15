@@ -47,7 +47,7 @@ export const register: Register = (on, options) => {
     const n1 = (x: any) => (options.contextHealth === false ? n2(x) : contextHealthTurnComplete($, x, n2))
     return options.cacheKeeper === false ? n1(e) : cacheKeeperTurnComplete($, e, n1)
   })
-  if (options.contextHealth !== false) on('command.run', { command: 'handoff' }, contextHealthCommandRunHandoff)
+  if (options.contextHealth !== false) on('command.run', { command: 'ctx-handoff' }, contextHealthCommandRunHandoff)
   if (options.contextHealth !== false) on('command.run', { command: 'autohandoff' }, contextHealthCommandRunAutohandoff)
   if (options.filetree !== false) on('command.run', { command: 'filetree' }, filetreeCommandRunFiletree)
   if (options.filetree !== false) on('ui.render', { component: 'Pane', requestId: 'filetree' }, filetreeUiRenderPaneFiletree)

@@ -33,7 +33,7 @@ function startHandoff($: any) {
 }
 
 export async function contextHealthSessionStart($: any, e: any, next: any) {
-  await $.command.register({ name: 'handoff', description: 'Write a handoff brief, clear, and continue in a fresh context' })
+  await $.command.register({ name: 'ctx-handoff', description: 'Write a handoff brief, clear, and continue in a fresh context' })
   await $.command.register({ name: 'autohandoff', description: 'Auto handoff at a context %: /autohandoff [percent|off]' })
   return next(e)
 }

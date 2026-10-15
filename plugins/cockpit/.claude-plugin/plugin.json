@@ -1,6 +1,6 @@
 {
   "name": "cockpit",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Live panes and bands for session awareness: agents-progress, cache-keeper, context-health, filetree, next-steps",
   "userConfig": {
     "agentsProgress": {
@@ -18,7 +18,7 @@
     "contextHealth": {
       "type": "boolean",
       "title": "context-health",
-      "description": "Context fill band with warnings, /handoff and /autohandoff",
+      "description": "Context fill band with warnings, /ctx-handoff and /autohandoff",
       "default": true
     },
     "filetree": {
