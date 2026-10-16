@@ -1,0 +1,17 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  check:   # keep in sync with the ruleset's required check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@<SHA> # v4
+      # TODO: setup toolchain (e.g. actions/setup-node@<SHA> # v4) and run the project's lint/test/build commands

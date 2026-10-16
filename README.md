@@ -8,9 +8,12 @@ Claude Code mods (needs Claude Code 2.1.287+). Inspired by savvy-progress, claud
 /plugin marketplace add bharath-gp/ai-harness
 /plugin install guardrails@ai-harness
 /plugin install cockpit@ai-harness
+/plugin install toolbox@ai-harness
 ```
 
-Two plugins, each a bundle of mods. Every mod is on by default; turn individual mods off in the config menu (each is a boolean `userConfig` field, e.g. `cacheKeeper`) and the plugin reloads. Mods are not sandboxed: read the source first.
+`toolbox` holds general-purpose skills, not mods. Today: `github-repo-setup`, which sets up or hardens a GitHub repo (new or existing) with branch protection, CI, CodeQL, Dependabot, secret scanning and optional signed commits via `gh`.
+
+The other two plugins are bundles of mods. Every mod is on by default; turn individual mods off in the config menu (each is a boolean `userConfig` field, e.g. `cacheKeeper`) and the plugin reloads. Mods are not sandboxed: read the source first.
 
 | Bundle | Mod | What it does |
 | --- | --- | --- |
@@ -25,6 +28,17 @@ Two plugins, each a bundle of mods. Every mod is on by default; turn individual 
 | | `usage-limits` | Always-on band: session (5h) and weekly (7d) limit usage, reset countdown, pace |
 | | `filetree` | File tree pane with git status and highlights for files Claude reads and writes |
 | | `next-steps` | Suggests three next prompts after each turn |
+
+## Other coding agents
+
+The `toolbox` skills are plain `SKILL.md` folders, so the open [`skills`](https://github.com/vercel-labs/skills) installer puts them into Cursor, Codex, Gemini CLI, GitHub Copilot, OpenCode and other agents. Claude Code users keep using `/plugin install` above.
+
+```
+npx skills add bharath-gp/ai-harness                 # pick skills and agents interactively
+npx skills add bharath-gp/ai-harness --skill github-repo-setup --agent codex cursor -g
+```
+
+Only skills install this way; the `guardrails` and `cockpit` mods are Claude Code only.
 
 ## License
 
