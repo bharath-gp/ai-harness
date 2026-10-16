@@ -8,9 +8,12 @@ Claude Code mods (needs Claude Code 2.1.287+). Inspired by savvy-progress, claud
 /plugin marketplace add bharath-gp/ai-harness
 /plugin install guardrails@ai-harness
 /plugin install cockpit@ai-harness
+/plugin install repo-setup@ai-harness
 ```
 
-Two plugins, each a bundle of mods. Every mod is on by default; turn individual mods off in the config menu (each is a boolean `userConfig` field, e.g. `cacheKeeper`) and the plugin reloads. Mods are not sandboxed: read the source first.
+`repo-setup` is a skill, not a mod: ask Claude to set up or harden a GitHub repo (new or existing) and it applies branch protection, CI, CodeQL, Dependabot, secret scanning and optional signed commits via `gh`.
+
+The other two plugins are bundles of mods. Every mod is on by default; turn individual mods off in the config menu (each is a boolean `userConfig` field, e.g. `cacheKeeper`) and the plugin reloads. Mods are not sandboxed: read the source first.
 
 | Bundle | Mod | What it does |
 | --- | --- | --- |

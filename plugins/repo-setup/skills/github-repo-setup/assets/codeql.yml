@@ -1,0 +1,23 @@
+name: CodeQL
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '17 4 * * 1'
+permissions:
+  contents: read
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@<SHA> # v4
+      - uses: github/codeql-action/init@<SHA> # v3
+        with:
+          languages: <LANGUAGE>
+          build-mode: none
+      - uses: github/codeql-action/analyze@<SHA> # v3

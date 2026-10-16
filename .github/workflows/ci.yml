@@ -25,5 +25,5 @@ jobs:
         run: |
           for d in plugins/*/; do
             claude plugin validate "$d"
-            claude plugin test "$d"
+            if [ -f "$d/hooks/hooks.json" ]; then claude plugin test "$d"; fi
           done
