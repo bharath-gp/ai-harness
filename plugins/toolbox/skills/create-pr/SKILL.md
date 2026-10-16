@@ -11,7 +11,11 @@ A reviewer reads the PR body, not the diff, to decide what to look at. The body 
 
 - `gh repo view --json defaultBranchRef,nameWithOwner` gives the base branch. `git branch --show-current` gives the head; on the base branch, stop and ask for a branch name.
 - `git status --short`: uncommitted work in scope goes through the `commit-changes` skill first. Unrelated dirty files stay out and get named in the report.
-- Read what the PR will contain: `git log <base>..HEAD` and `git diff <base>...HEAD`. The body comes from the diff and commit messages, because those are what land.
+- `git fetch origin`, then read what the PR will contain: `git log origin/<base>..HEAD` and `git diff origin/<base>...HEAD`. The body comes from the diff and commit messages, because those are what land.
+- Every commit in that range must be new work. A squash or rebase merge leaves the branch holding commits whose content is already on the base under a different hash: `git cherry origin/<base>` marks rebase-merged ones `-`; for squash merges, match each commit's title against `gh pr list --state merged --search "<title>" --json number,title,headRefName`. Already-merged commits are **stale**.
+  - Unpushed branch: `git rebase --onto origin/<base> <last stale commit>` drops them, then re-read the range. Say so in the report.
+  - Pushed branch: the rebase needs a force-push, so ask first, naming the stale commits.
+  - Range holds only stale commits: report that and stop.
 - Existing PR for this branch (`gh pr list --head <branch>`): report its URL and stop, unless the user asked to update it.
 - Empty range: report that and stop.
 
