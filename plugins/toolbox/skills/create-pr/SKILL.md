@@ -16,7 +16,7 @@ A reviewer reads the PR body, not the diff, to decide what to look at. The body 
   - Unpushed branch: `git rebase --onto origin/<base> <last stale commit>` drops them, then re-read the range. Say so in the report.
   - Pushed branch: the rebase needs a force-push, so ask first, naming the stale commits.
   - Range holds only stale commits: report that and stop.
-- Existing PR for this branch (`gh pr list --head <branch>`): report its URL and stop, unless the user asked to update it.
+- Existing open PR for this branch (`gh pr list --head <branch>`): **update mode**. Read it (`gh pr view --json number,title,body,url`) and carry on; step 5 updates it instead of creating one.
 - Empty range: report that and stop.
 
 ## 2. Pick the template
@@ -67,7 +67,16 @@ Checklist items: tick only what you verified this session; leave the rest untick
 
 Match the repo's titles: `gh pr list --state merged --limit 10 --json title`. Conventional Commits is the default (`fix(auth): reject expired tokens`); the title says what changed, imperative, ≤72 characters, no trailing period. A single-commit PR reuses that commit's title. A squash-merge repo turns this title into the commit on the base branch, so make it stand alone.
 
-## 5. Open it
+## 5. Open or update it
+
+**Update mode.** The existing body is the draft: re-check each section against the full range now on the branch, not only the new commits.
+- Rewrite what the new commits changed: a section that no longer matches the diff, new verification, new risks, a new ticket. Keep what is still true, human edits and ticks already made included; add a tick only for what you verified this session.
+- Retitle only when the title no longer says what the PR does.
+- Nothing material changed: leave title and body alone and say so.
+- Push the new commits, then `gh pr edit <number> --title "<title>" --body-file <file>`. Skip `--title` when unchanged.
+- Done when `gh pr view --json body` shows the edit. Report the URL and what changed in the body, in a few lines.
+
+**New PR.**
 
 - Push when the branch has no upstream or is ahead: `git push -u origin HEAD`.
 - Write the body to a temp file and create with `gh pr create --base <base> --title "<title>" --body-file <file>`. Add `--draft` when the user asked for a draft.
