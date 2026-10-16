@@ -11,7 +11,7 @@ Claude Code mods (needs Claude Code 2.1.287+). Inspired by savvy-progress, claud
 /plugin install toolbox@ai-harness
 ```
 
-`toolbox` holds general-purpose skills, not mods. Today: `commit-changes`, which writes a Conventional Commits message (why, not just what) and commits the session's changes, splitting unrelated work and adding ticket refs; and `github-repo-setup`, which sets up or hardens a GitHub repo (new or existing) with branch protection, CI, CodeQL, Dependabot, secret scanning and optional signed commits via `gh`.
+`toolbox` holds general-purpose skills, not mods. Today: `commit-changes`, which writes a Conventional Commits message (why, not just what) and commits the session's changes, splitting unrelated work and adding ticket refs; `create-pr`, which opens a PR using the repo's template (or a built-in one) with why, what, verification and review focus; and `github-repo-setup`, which sets up or hardens a GitHub repo (new or existing) with branch protection, CI, CodeQL, Dependabot, secret scanning and optional signed commits via `gh`.
 
 The other two plugins are bundles of mods. Every mod is on by default; turn individual mods off in the config menu (each is a boolean `userConfig` field, e.g. `cacheKeeper`) and the plugin reloads. Mods are not sandboxed: read the source first.
 

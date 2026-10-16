@@ -1,0 +1,71 @@
+---
+name: create-pr
+description: Opens a GitHub pull request for the current branch with a title and body a reviewer can understand without reading the diff. Fills the repo's PR template section by section, or a built-in template when the repo has none. Use whenever a PR is about to be opened, by the user or by an agent: "open a PR", "create a pull request", "gh pr create", "push and PR this", "ship it", or a plan step that says to open a PR. Also handles pushing the branch, ticket links, test evidence and reviewer notes.
+---
+
+# Create PR
+
+A reviewer reads the PR body, not the diff, to decide what to look at. The body answers: why this exists, what changed, how it was verified, where to look closely. Every PR from this skill carries the same sections, filled from the real changes.
+
+## 1. Gather the facts
+
+- `gh repo view --json defaultBranchRef,nameWithOwner` gives the base branch. `git branch --show-current` gives the head; on the base branch, stop and ask for a branch name.
+- `git status --short`: uncommitted work in scope goes through the `commit-changes` skill first. Unrelated dirty files stay out and get named in the report.
+- Read what the PR will contain: `git log <base>..HEAD` and `git diff <base>...HEAD`. The body comes from the diff and commit messages, because those are what land.
+- Existing PR for this branch (`gh pr list --head <branch>`): report its URL and stop, unless the user asked to update it.
+- Empty range: report that and stop.
+
+## 2. Pick the template
+
+First match wins:
+
+1. `.github/PULL_REQUEST_TEMPLATE/` holding several templates: choose the one matching the change; ask when two fit.
+2. `.github/pull_request_template.md`, `.github/PULL_REQUEST_TEMPLATE.md`, `pull_request_template.md`, `docs/pull_request_template.md` (any casing).
+3. The built-in template below.
+
+A repo template is law: keep its headings, order and checklist wording verbatim, and fill every section. A section that does not apply gets `N/A` plus a few words why. Sections it lacks stay out, so the built-in sections never get bolted on. Where the repo template is thinner than the bar in step 3, carry each missing fact as a bold-labelled line (`**Verification:** ...`, `**Review focus:** ...`) inside its closest section. Verification always appears, with the command run and its result.
+
+## 3. Fill it to the bar
+
+Whatever the template, the finished body lets a reviewer say, without opening the diff:
+
+- **Why**: the problem or need, and for a bug its cause. Who was affected.
+- **What**: the behaviour after the change, grouped by theme, in domain words. File lists are the diff's job.
+- **Verification**: what was run (command and result) or observed. Say `Not tested` when nothing ran; an unrun check never gets a tick.
+- **Review focus**: risk, breaking changes, migrations, non-obvious choices with the alternative rejected, and the one or two places that deserve a close read. UI changes get before/after screenshots when you can produce them; otherwise ask for them in the report.
+- **Links**: the ticket. Find it in the branch name (`feature/PROJ-123-...`, `123-fix-x`), the commits or the session. `Closes #123` when the PR finishes the issue, `Refs PROJ-123` otherwise. No ticket found: leave the line out.
+
+Checklist items: tick only what you verified this session; leave the rest unticked and name them in the report.
+
+### Built-in template
+
+```markdown
+## Summary
+<one or two sentences: what this PR does, for someone skimming>
+
+## Why
+<problem or need; cause for a bug; who it affected>
+
+## What changed
+- <behaviour change, grouped by theme>
+
+## How it was verified
+- <command run and result, or manual check>
+
+## Review focus
+- <risk, breaking change, trade-off, or place to read closely; "None" if routine>
+
+## Related
+<Closes #123 | Refs PROJ-123>
+```
+
+## 4. Write the title
+
+Match the repo's titles: `gh pr list --state merged --limit 10 --json title`. Conventional Commits is the default (`fix(auth): reject expired tokens`); the title says what changed, imperative, ≤72 characters, no trailing period. A single-commit PR reuses that commit's title. A squash-merge repo turns this title into the commit on the base branch, so make it stand alone.
+
+## 5. Open it
+
+- Push when the branch has no upstream or is ahead: `git push -u origin HEAD`.
+- Write the body to a temp file and create with `gh pr create --base <base> --title "<title>" --body-file <file>`. Add `--draft` when the user asked for a draft.
+- End the body with the attribution line the environment's instructions specify; none specified means none.
+- Done when `gh pr view --json url,body` returns the PR and the body matches the file. Report the URL, then any unticked checklist items, untested areas and files left uncommitted, in a few lines.
