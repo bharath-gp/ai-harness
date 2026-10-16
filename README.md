@@ -26,6 +26,10 @@ Two plugins, each a bundle of mods. Every mod is on by default; turn individual 
 | | `filetree` | File tree pane with git status and highlights for files Claude reads and writes |
 | | `next-steps` | Suggests three next prompts after each turn |
 
+## License
+
+MIT, see [LICENSE](LICENSE). Security reports: [SECURITY.md](SECURITY.md).
+
 ## Develop
 
 ```
