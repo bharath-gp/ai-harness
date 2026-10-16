@@ -29,11 +29,7 @@ The other two plugins are bundles of mods. Every mod is on by default; turn indi
 | | `filetree` | File tree pane with git status and highlights for files Claude reads and writes |
 | | `next-steps` | Suggests three next prompts after each turn |
 
-## License
-
-MIT, see [LICENSE](LICENSE). Security reports: [SECURITY.md](SECURITY.md).
-
-### Other coding agents
+## Other coding agents
 
 The `toolbox` skills are plain `SKILL.md` folders, so the open [`skills`](https://github.com/vercel-labs/skills) installer puts them into Cursor, Codex, Gemini CLI, GitHub Copilot, OpenCode and other agents. Claude Code users keep using `/plugin install` above.
 
@@ -43,6 +39,10 @@ npx skills add bharath-gp/ai-harness --skill github-repo-setup --agent codex cur
 ```
 
 Only skills install this way; the `guardrails` and `cockpit` mods are Claude Code only.
+
+## License
+
+MIT, see [LICENSE](LICENSE). Security reports: [SECURITY.md](SECURITY.md).
 
 ## Develop
 
