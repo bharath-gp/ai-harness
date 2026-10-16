@@ -1,0 +1,6 @@
+{
+  "name": "toolbox",
+  "version": "0.1.0",
+  "author": { "name": "Bharath G P" },
+  "description": "General-purpose skills: github-repo-setup (repo settings, branch protection, CI, CodeQL, Dependabot, secret scanning, signed commits)"
+}

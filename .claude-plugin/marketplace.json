@@ -15,9 +15,9 @@
       "description": "Live panes and bands for session awareness: agents-progress, cache-keeper, context-health, filetree, next-steps, usage-limits"
     },
     {
-      "name": "repo-setup",
-      "source": "./plugins/repo-setup",
-      "description": "Skill: set up a GitHub repo with recommended settings and guardrails (github-repo-setup)"
+      "name": "toolbox",
+      "source": "./plugins/toolbox",
+      "description": "General-purpose skills: github-repo-setup"
     }
   ]
 }

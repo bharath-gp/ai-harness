@@ -1,6 +1,0 @@
-{
-  "name": "repo-setup",
-  "version": "0.1.0",
-  "author": { "name": "Bharath G P" },
-  "description": "Skill that sets up a GitHub repo with recommended settings and guardrails via gh: branch protection, CI, CodeQL, Dependabot, secret scanning, optional signed commits"
-}
