@@ -17,7 +17,7 @@
     {
       "name": "toolbox",
       "source": "./plugins/toolbox",
-      "description": "General-purpose skills: github-repo-setup"
+      "description": "General-purpose skills: commit-changes, create-pr, github-repo-setup"
     }
   ]
 }

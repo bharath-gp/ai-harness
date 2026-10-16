@@ -1,6 +1,6 @@
 {
   "name": "toolbox",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "author": { "name": "Bharath G P" },
   "description": "General-purpose skills: commit-changes (Conventional Commits messages, logical splits, ticket refs), create-pr (PRs filled from the repo template, or a built-in one, with why, what, verification and review focus), github-repo-setup (repo settings, branch protection, CI, CodeQL, Dependabot, secret scanning, signed commits)"
 }
