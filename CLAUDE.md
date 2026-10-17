@@ -15,6 +15,7 @@ Claude Code plugin marketplace (`.claude-plugin/marketplace.json`, name `ai-harn
 - `e.args` can be undefined on a bare slash command: use `(e.args ?? '').trim()`.
 - Tests: no `$.ui.mount`; use `$.ui.render({surface, component, requestId, props})` and mock `model.complete` etc. with `on(...)` returning `{ value }`.
 - Run `claude plugin validate` and `claude plugin test` on every touched bundle.
+- Whenever a mod or skill is added, changed or removed, update that plugin's docs in the same change: the `description` in `plugins/<name>/.claude-plugin/plugin.json` and the matching entry in `.claude-plugin/marketplace.json` (the plugin page shows these, not the README; list every mod/skill with its trigger and slash commands), `plugins/<name>/README.md`, and the root README table. A new mod also needs its `userConfig` field. Bump the plugin `version` so installed copies refresh.
 
 ## Learned rules
 <!-- reflect:start -->
