@@ -29,6 +29,8 @@ The other two plugins are bundles of mods. Every mod is on by default; turn indi
 | | `filetree` | File tree pane with git status and highlights for files Claude reads and writes |
 | | `next-steps` | Suggests three next prompts after each turn |
 
+Per-plugin guides with usage for every mod and skill: [guardrails](plugins/guardrails/README.md), [cockpit](plugins/cockpit/README.md), [toolbox](plugins/toolbox/README.md).
+
 ## Other coding agents
 
 The `toolbox` skills are plain `SKILL.md` folders, so the open [`skills`](https://github.com/vercel-labs/skills) installer puts them into Cursor, Codex, Gemini CLI, GitHub Copilot, OpenCode and other agents. Claude Code users keep using `/plugin install` above.

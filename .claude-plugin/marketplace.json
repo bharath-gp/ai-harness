@@ -7,17 +7,17 @@
     {
       "name": "guardrails",
       "source": "./plugins/guardrails",
-      "description": "Safety and review of Claude's output: blast-radius, secret-sentry, reflect, assumption-tracker, self-critique"
+      "description": "Safety and review of Claude's output. Five mods, each toggled in the plugin config. blast-radius: holds destructive shell commands (rm -rf, git push --force, git reset --hard, DROP TABLE...) behind a card showing the files at risk; pick Proceed or Cancel. secret-sentry: denies Write/Edit that would put API keys, tokens or private keys in a file (.env and *.example exempt). reflect: spots lasting corrections in your prompts (or 'remember: ...') and offers to save them to ./CLAUDE.md or ~/.claude/CLAUDE.md; /reflect-queue, /reflect-pause. assumption-tracker: after each turn lists what Claude assumed; mark Right or Wrong and send a fix for the wrong ones; /assumptions. self-critique: /critique [auto|opus|sonnet|haiku] reviews Claude's last answer with a verdict, flaws and a Make this fix button."
     },
     {
       "name": "cockpit",
       "source": "./plugins/cockpit",
-      "description": "Live panes and bands for session awareness: agents-progress, cache-keeper, context-health, filetree, next-steps, usage-limits"
+      "description": "Live panes and bands for session awareness. Six mods, each toggled in the plugin config. agents-progress: running-subagents and todo bands above the prompt; /agents-info opens the full subagent panel. cache-keeper: cache countdown in the last 5 minutes or when cold, cold-send guard with cost estimate; /keepwarm [90m|2h|off|status] pings to hold the cache, /cache-tax shows its state. context-health: context fill band with warnings, Handoff and Fresh buttons; /ctx-handoff writes .claude/handoff.md and continues in a clean context, /autohandoff [percent|off] does it automatically. usage-limits: always-on session (5h) and weekly (7d) limit bars with reset countdown, pace and a toast at 90%. filetree: /filetree opens a file tree with git status and highlights for files Claude reads, edits and commits. next-steps: three suggested next prompts after each turn; click one to fill the prompt."
     },
     {
       "name": "toolbox",
       "source": "./plugins/toolbox",
-      "description": "General-purpose skills: commit-changes, create-pr, github-repo-setup"
+      "description": "General-purpose skills, triggered by plain requests or named directly. commit-changes ('commit this'): commits the session's changes as atomic Conventional Commits with a why-first body, splits unrelated work, adds ticket refs (#123, PROJ-123), leaves other dirty files alone, never pushes. create-pr ('open a PR'): pushes the branch and opens or updates a PR filled from the repo's template (or a built-in one) with why, what, verification and review focus; drops commits already merged by squash. github-repo-setup ('set up this repo properly'): via gh, creates or hardens a repo with a branch-protection ruleset, squash-only merges, CI, CodeQL, Dependabot, CODEOWNERS, PR template, LICENSE, SECURITY.md, secret scanning and optional signed commits."
     }
   ]
 }

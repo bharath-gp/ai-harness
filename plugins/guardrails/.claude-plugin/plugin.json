@@ -1,7 +1,7 @@
 {
   "name": "guardrails",
-  "version": "0.1.6",
-  "description": "Safety and review of Claude's output: blast-radius, secret-sentry, reflect, assumption-tracker, self-critique",
+  "version": "0.1.7",
+  "description": "Safety and review of Claude's output. Five mods, each toggled in the plugin config. blast-radius: holds destructive shell commands (rm -rf, git push --force, git reset --hard, DROP TABLE...) behind a card showing the files at risk; pick Proceed or Cancel. secret-sentry: denies Write/Edit that would put API keys, tokens or private keys in a file (.env and *.example exempt). reflect: spots lasting corrections in your prompts (or 'remember: ...') and offers to save them to ./CLAUDE.md or ~/.claude/CLAUDE.md; /reflect-queue, /reflect-pause. assumption-tracker: after each turn lists what Claude assumed; mark Right or Wrong and send a fix for the wrong ones; /assumptions. self-critique: /critique [auto|opus|sonnet|haiku] reviews Claude's last answer with a verdict, flaws and a Make this fix button.",
   "userConfig": {
     "blastRadius": {
       "type": "boolean",
