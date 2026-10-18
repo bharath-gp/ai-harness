@@ -12,7 +12,7 @@ test('context-health band shows fill and rate limits', async ($, on) => {
   for (const surface of ['terminal', 'desktop']) expect(JSON.stringify(await render($, surface, 'AbovePrompt'))).toContain('Context 42%')
 })
 
-test('next-steps stays folded behind a link after a turn', async ($, on) => {
+test('next-steps band shows suggestions after a turn', async ($, on) => {
   on('session.model', () => ({ value: 'claude-sonnet-5-5' }) as never)
   on('model.complete', () => ({ value: { isAnswered: true, text: '["Run the tests","Open a PR"]', usage: { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } } }) as never)
   on('session.usage', () => usage)
@@ -20,7 +20,7 @@ test('next-steps stays folded behind a link after a turn', async ($, on) => {
   on('turn.complete', () => ({ text: '' }) as never)
   await ($ as any).turn.complete({ answer: 'done', reason: 'answer', durationMs: 1, turnId: 't', isAborted: false })
   await new Promise(r => setTimeout(r, 50))
-  for (const surface of ['terminal', 'desktop']) expect(JSON.stringify(await render($, surface, 'AbovePrompt'))).toContain('Next ▸')
+  for (const surface of ['terminal', 'desktop']) expect(JSON.stringify(await render($, surface, 'AbovePrompt'))).toContain('Run the tests')
 })
 
 test('filetree pane draws', async ($, on) => {

@@ -1,6 +1,6 @@
 # cockpit
 
-Live panes and bands for session awareness. While all is calm, mods share one dim status line above the prompt (Details expands it); a mod draws its own band only when it needs attention. Six mods that show what your agents are doing, what your cache and context cost, where your plan limits stand, and which files are changing. Needs Claude Code 2.1.287+.
+Live panes and bands for session awareness. While all is calm, mods share one dim status line above the prompt (Details expands it into full cards with rings, bars and buttons); a mod draws its own band only when it needs attention. Six mods that show what your agents are doing, what your cache and context cost, where your plan limits stand, and which files are changing. Needs Claude Code 2.1.287+.
 
 ```
 /plugin marketplace add bharath-gp/ai-harness
