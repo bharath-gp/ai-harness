@@ -25,6 +25,7 @@ The other two plugins are bundles of mods. Every mod is on by default; turn indi
 | `cockpit` | `agents-progress` | Live subagent panel and a running-agents band above the prompt |
 | | `cache-keeper` | Cache countdown band (shown in the last 5 minutes or when cold), /keepwarm pings and a cold-send dialog with cost estimate |
 | | `context-health` | Context fill band with warnings, /ctx-handoff and /autohandoff |
+| | `token-meter` | Session token count in the status line; Details: token types, project total, cost, models |
 | | `usage-limits` | Always-on band: session (5h) and weekly (7d) limit usage, reset countdown, pace |
 | | `filetree` | File tree pane with git status and highlights for files Claude reads and writes |
 | | `next-steps` | Suggests three next prompts after each turn |
