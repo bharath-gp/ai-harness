@@ -1,13 +1,13 @@
 # guardrails
 
-Safety and review of Claude's output. Five mods that stop damage before it happens, catch leaks, learn your preferences, and make Claude's answers easy to audit. Needs Claude Code 2.1.287+.
+Safety and review of Claude's output. Six mods that stop damage before it happens, catch leaks, learn your preferences, and make Claude's answers easy to audit. Needs Claude Code 2.1.287+.
 
 ```
 /plugin marketplace add bharath-gp/ai-harness
 /plugin install guardrails@ai-harness
 ```
 
-Every mod is on by default. Turn one off in the plugin config menu (boolean fields `blastRadius`, `secretSentry`, `reflect`, `assumptionTracker`, `selfCritique`); the plugin reloads. Mods are not sandboxed: read `hooks/register.tsx` first.
+Every mod is on by default. Turn one off in the plugin config menu (boolean fields `blastRadius`, `secretSentry`, `reflect`, `assumptionTracker`, `selfCritique`, `promptCoach`); the plugin reloads. Mods are not sandboxed: read `hooks/register.tsx` first.
 
 | Mod | Trigger | Commands |
 | --- | --- | --- |
@@ -16,6 +16,7 @@ Every mod is on by default. Turn one off in the plugin config menu (boolean fiel
 | [reflect](#reflect) | every prompt you send | `/reflect-queue`, `/reflect-pause` |
 | [assumption-tracker](#assumption-tracker) | end of each turn | `/assumptions` |
 | [self-critique](#self-critique) | on demand, or each turn | `/critique` |
+| [prompt-coach](#prompt-coach) | first prompt of a session | `/sharpen` |
 
 ## blast-radius
 
@@ -66,6 +67,16 @@ A second opinion on Claude's last answer.
 **Use:** run `/critique` to open a panel with a verdict (strong, mixed or weak), strengths, and flaws. Each flaw has a `Make this fix` button that sends Claude a prompt to repair it. Panel buttons: `Rerun`, `Auto on/off` (critique every answer automatically) and `Model` (cycles `session`, `opus`, `sonnet`, `haiku`).
 
 **Arguments:** `/critique auto` toggles auto-critique; `/critique opus|sonnet|haiku|session` picks the reviewing model, then critiques.
+
+## prompt-coach
+
+Turns a rough first prompt into a complete one.
+
+**Use:** when you send the first prompt of a session (40 to 2000 characters, not a slash command, no attachments) it is held and the `Prompt coach` pane opens. The pane asks one question at a time, each with 2 to 4 options plus an "Other" box; the model decides when it has enough, up to 10 questions. `Back` revisits the last answer, `Finish now` skips ahead. It then writes an improved prompt (role, goal, context, requirements, constraints, out of scope, acceptance criteria, output format) with your original quoted verbatim. `Use` sends it, `Copy` copies it, `Request changes` regenerates it from your note, `Dismiss` sends your original unchanged. If no surface can draw a pane, the prompt is sent as is.
+
+**Commands:** `/sharpen <prompt>` runs the interview on any prompt, at any time.
+
+**Context:** the interviewer sees your prompt, `CLAUDE.md` and the top-level file names only, so it does not ask what the project already answers.
 
 ## Develop
 
