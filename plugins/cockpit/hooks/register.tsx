@@ -263,8 +263,20 @@ export async function cacheKeeperPromptSubmit($: any, e: any, next: any) {
     await cacheKeeperSync($)
     if (cacheKeeperTokens >= MIN_GUARD_TOKENS) {
       warnedCold = true
-      return {
-        drop: `cache-keeper: the cache went cold ${mins(now - lastTouch - TTL)} ago. Sending rewrites up to ${cacheKeeperTokens} tokens ≈ $${((cacheKeeperTokens * cacheKeeperRates[0]) / 1e6).toFixed(2)} (warm: $${((cacheKeeperTokens * cacheKeeperRates[1]) / 1e6).toFixed(2)}). Send again to pay it, or /clear.`,
+      const cold$ = fmtCost((cacheKeeperTokens * cacheKeeperRates[0]) / 1e6)
+      const warm$ = fmtCost((cacheKeeperTokens * cacheKeeperRates[1]) / 1e6)
+      let choice = ''
+      try {
+        choice = await $.ui.ask(`The cache went cold ${mins(now - lastTouch - TTL)} ago. Sending rewrites up to ${fmtTok(cacheKeeperTokens)} tokens ≈ ${cold$} (warm: ${warm$}). Continue here or start a new session?`, {
+          header: 'Cache cold',
+          options: ['Continue here', 'New session'],
+        })
+      } catch {
+        return { drop: 'cache-keeper: cache is cold, prompt not sent. Send again to continue here.' }
+      }
+      if (choice === 'New session') {
+        await $.command.run({ command: 'clear', args: '' })
+        return { drop: 'cache-keeper: started a new session. Send your prompt again.' }
       }
     }
   }
