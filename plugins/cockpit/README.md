@@ -46,7 +46,7 @@ Tracks how full the context window is.
 
 **Use:** a band shows `Context N%` with turn count, speed, cost and the plan limit percentages, and warns as it fills. Buttons: `Handoff` (hotkey `h`), `Fresh` (`f`, runs `/clear`), and `×` to hide the band.
 
-- `/ctx-handoff` has Claude write a handoff brief to `.claude/handoff.md`, clears the context, then pre-fills a prompt to read it and continue. Review before sending.
+- `/ctx-handoff` has Claude write a handoff brief to `.claude/handoff.md`, clears the context (only if the turn finished and the file exists; otherwise the context is kept), then pre-fills a prompt to read it and continue. Review before sending.
 - `/autohandoff 60` triggers the same handoff automatically at 60% context (accepts 10 to 95; default 50). `/autohandoff off` disables it.
 
 ## usage-limits

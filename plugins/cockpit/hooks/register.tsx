@@ -1,7 +1,7 @@
 import type { Register } from 'claude-code'
 import { band, beginPass, endPass, item } from './band'
 import { fileBadge, folderIcon, iconTile, panel, pill, sectionLabel, tile } from './kit'
-import { P, RAMP, type Tone, below, fmtCost, fmtDur, fmtTok, isRich, zoneTone } from './ui'
+import { P, RAMP, type Tone, below, fmtCost, fmtDur, fmtSize, fmtTok, isRich, parsePorcelain, zoneTone } from './ui'
 
 // ===== agents-progress =====
 type Agent = { id: string; type: string; desc: string; model?: string; startedAt: number; endedAt?: number; failed?: boolean }
@@ -179,6 +179,9 @@ let lastPing = ''
 let cacheKeeperTokens = 0
 let cacheKeeperRates = [4, 0.2]
 
+// Cost in dollars of sending the whole context at a $/MTok rate: [0] cold (cache write), [1] warm (cache read).
+const cacheCost = (i: 0 | 1) => fmtCost((cacheKeeperTokens * cacheKeeperRates[i]) / 1e6)
+
 async function cacheKeeperSync($: any) {
   const { context } = await $.session.usage()
   cacheKeeperTokens = context.tokens ?? cacheKeeperTokens
@@ -251,7 +254,7 @@ export async function cacheKeeperCommandRunCacheTax($: any) {
   const now = await $.clock.now()
   const left = TTL - (now - lastTouch)
   return {
-    text: `cache ${left > 0 ? `warm ${mins(left)} left` : 'cold'} | context ${cacheKeeperTokens} tok | cold send ≈ $${((cacheKeeperTokens * cacheKeeperRates[0]) / 1e6).toFixed(2)} vs warm $${((cacheKeeperTokens * cacheKeeperRates[1]) / 1e6).toFixed(2)}`,
+    text: `cache ${left > 0 ? `warm ${mins(left)} left` : 'cold'} | context ${cacheKeeperTokens} tok | cold send ≈ ${cacheCost(0)} vs warm ${cacheCost(1)}`,
   }
 }
 
@@ -263,11 +266,9 @@ export async function cacheKeeperPromptSubmit($: any, e: any, next: any) {
     await cacheKeeperSync($)
     if (cacheKeeperTokens >= MIN_GUARD_TOKENS) {
       warnedCold = true
-      const cold$ = fmtCost((cacheKeeperTokens * cacheKeeperRates[0]) / 1e6)
-      const warm$ = fmtCost((cacheKeeperTokens * cacheKeeperRates[1]) / 1e6)
       let choice = ''
       try {
-        choice = await $.ui.ask(`The cache went cold ${mins(now - lastTouch - TTL)} ago. Sending rewrites up to ${fmtTok(cacheKeeperTokens)} tokens ≈ ${cold$} (warm: ${warm$}). Continue here or start a new session?`, {
+        choice = await $.ui.ask(`The cache went cold ${mins(now - lastTouch - TTL)} ago. Sending rewrites up to ${fmtTok(cacheKeeperTokens)} tokens ≈ ${cacheCost(0)} (warm: ${cacheCost(1)}). Continue here or start a new session?`, {
           header: 'Cache cold',
           options: ['Continue here', 'New session'],
         })
@@ -275,7 +276,8 @@ export async function cacheKeeperPromptSubmit($: any, e: any, next: any) {
         return { drop: 'cache-keeper: cache is cold, prompt not sent. Send again to continue here.' }
       }
       if (choice === 'New session') {
-        await $.command.run({ command: 'clear', args: '' })
+        // command.run from inside prompt.submit would wait on this very turn: clear once the hook has returned
+        $.clock.after(0, () => $.command.run({ command: 'clear', args: '' }))
         return { drop: 'cache-keeper: started a new session. Send your prompt again.' }
       }
     }
@@ -296,8 +298,8 @@ export async function cacheKeeperUiRenderAbovePrompt($: any, e: any, next: any) 
   const warm = left > 0
   const tone: Tone = !warm ? 'err' : left < WARN_BEFORE ? 'warn' : 'ok'
   const keeping = warmUntil > now
-  const cold$ = fmtCost((cacheKeeperTokens * cacheKeeperRates[0]) / 1e6)
-  const warm$ = fmtCost((cacheKeeperTokens * cacheKeeperRates[1]) / 1e6)
+  const cold$ = cacheCost(0)
+  const warm$ = cacheCost(1)
   return band($.ui.resolve(e), e, await below(next, e), {
     title: warm ? `Cache warm · ${mins(left)} left` : 'Cache cold',
     tone,
@@ -345,7 +347,8 @@ async function refresh($: any, force = false) {
 
 function startHandoff($: any) {
   handingOff = true
-  void $.prompt.submit({ text: HANDOFF_PROMPT })
+  // the host refuses a submit made from inside the /ctx-handoff command turn: send it from a later tick
+  $.clock.after(0, () => $.prompt.submit({ text: HANDOFF_PROMPT }))
 }
 
 export async function contextHealthSessionStart($: any, e: any, next: any) {
@@ -411,6 +414,11 @@ export async function contextHealthTurnComplete($: any, e: any, next: any) {
   const done = await next(e)
   if (handingOff) {
     handingOff = false
+    // Clear only when the handoff turn finished and wrote its file: otherwise the context would be lost for nothing.
+    if (e.reason !== 'answer' || !(await $.fs.exists(`${await $.session.cwd()}/${HANDOFF_FILE}`))) {
+      $.ui.toast('Handoff did not finish: context kept.')
+      return done
+    }
     await $.command.run({ command: 'clear', args: '' })
     await refresh($, true)
     await $.prompt.fill({ text: `Read ${HANDOFF_FILE} and continue from there.` })
@@ -499,7 +507,6 @@ function filetreeRedraw($: any) { return $.ui.invalidate('ui.render') }
 const rel = (p: string) => (p.startsWith(`${root}/`) ? p.slice(root.length + 1) : p)
 const dirOf = (p: string) => p.slice(0, p.lastIndexOf('/'))
 const base = (p: string) => p.slice(p.lastIndexOf('/') + 1)
-const fmtSize = (n: number) => (n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(n < 10240 ? 1 : 0)} KB` : `${(n / 1048576).toFixed(1)} MB`)
 const ago = (ms: number) => {
   const m = Math.floor(ms / 60_000)
   return m < 1 ? 'just now' : m < 60 ? `${m}m ago` : m < 1440 ? `${Math.floor(m / 60)}h ago` : `${Math.floor(m / 1440)}d ago`
@@ -508,20 +515,20 @@ const ago = (ms: number) => {
 const WORD: Record<string, string> = { '?': 'new', A: 'new', M: 'modified', T: 'modified', D: 'deleted', R: 'renamed', C: 'copied', U: 'conflict' }
 
 async function refreshGit($: any) {
-  const st = await $.process.run(['git', 'status', '-sb', '--porcelain'], { cwd: root, timeoutMs: 5000 }).catch(() => undefined)
+  const st = await $.process.run(['git', 'status', '-sb', '--porcelain', '-z'], { cwd: root, timeoutMs: 5000 }).catch(() => undefined)
   changes = new Map()
   branch = upstream = ''
   ahead = behind = 0
   if (st?.exitCode === 0) {
     const top = await $.process.run(['git', 'rev-parse', '--show-toplevel'], { cwd: root }).catch(() => undefined)
     const b = top?.exitCode === 0 ? top.stdout.trim() : root
-    const lines: string[] = st.stdout.split('\n')
-    const head = /^## (\S+?)(?:\.\.\.(\S+))?(?: \[(.+)\])?$/.exec(lines[0] ?? '')
+    const [header = '', ...rest] = st.stdout.split('\0') as string[]
+    const head = /^## (\S+?)(?:\.\.\.(\S+))?(?: \[(.+)\])?$/.exec(header)
     branch = head?.[1] ?? ''
     upstream = head?.[2] ?? ''
     ahead = Number(/ahead (\d+)/.exec(head?.[3] ?? '')?.[1] ?? 0)
     behind = Number(/behind (\d+)/.exec(head?.[3] ?? '')?.[1] ?? 0)
-    for (const line of lines.slice(1)) if (line.length > 3) changes.set(`${b}/${line.slice(3).replace(/^"|"$/g, '')}`, { st: line.slice(0, 2).trim()[0] ?? '?', add: 0, del: 0 })
+    for (const r of parsePorcelain(rest.join('\0'))) changes.set(`${b}/${r.path}`, { st: r.st.trim()[0] ?? '?', add: 0, del: 0 })
     const ns = await $.process.run(['git', 'diff', '--numstat', 'HEAD'], { cwd: root, timeoutMs: 5000 }).catch(() => undefined)
     for (const l of (ns?.stdout ?? '').split('\n')) {
       const [a, d, p] = l.split('\t')
@@ -1042,18 +1049,22 @@ const parse = (text: string): string[] => {
 }
 
 let steps: string[] = []
+let stepsGen = 0 // a late reply for an older prompt is ignored
 
 export function nextStepsPromptSubmit($: any, e: any, next: any) {
   steps = []
+  stepsGen += 1
   $.ui.invalidate('ui.render')
   return next(e)
 }
 
 export async function nextStepsTurnComplete($: any, e: any, next: any) {
   if (e.agentId === undefined && e.reason === 'answer') {
+    const gen = stepsGen
     void $.model
       .complete({ model: 'haiku', prompt: PROMPT(e.answer), maxTokens: 200, effort: 'low', timeoutMs: 15_000 })
       .then(r => {
+        if (gen !== stepsGen) return
         steps = r.isAnswered ? parse(r.text) : []
         $.ui.invalidate('ui.render')
       })

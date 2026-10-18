@@ -45,6 +45,21 @@ export const fit = (s: string, px: number, size: number) => {
 }
 
 export const fmtTok = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : `${n}`)
+export const fmtSize = (n: number) => (n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(n < 10240 ? 1 : 0)} KB` : `${(n / 1048576).toFixed(1)} MB`)
+
+// `git status --porcelain -z` output (no header) -> rows. A rename or copy carries its old path as an extra field: skipped.
+export const parsePorcelain = (out: string) => {
+  const parts = out.split('\0')
+  const rows: { st: string; path: string }[] = []
+  for (let i = 0; i < parts.length; i++) {
+    const l = parts[i]
+    if (l.length < 4) continue
+    rows.push({ st: l.slice(0, 2), path: l.slice(3) })
+    if (/[RC]/.test(l.slice(0, 2))) i++
+  }
+  return rows
+}
+
 export const fmtCost = (usd: number) => (usd < 0.01 ? '<$0.01' : usd < 10 ? `$${usd.toFixed(2)}` : `$${Math.round(usd)}`)
 export const fmtDur = (ms: number) => {
   const s = Math.max(0, Math.round(ms / 1000))
