@@ -1,5 +1,5 @@
 import type { Register } from 'claude-code'
-import { band, beginPass, endPass, item } from './band'
+import { band, beginPass, item, quiet, quietLine } from './band'
 import { fileBadge, folderIcon, iconTile, panel, pill, sectionLabel, tile } from './kit'
 import { P, RAMP, type Tone, below, fmtCost, fmtDur, fmtSize, fmtTok, isRich, parsePorcelain, zoneTone } from './ui'
 
@@ -86,30 +86,23 @@ export async function agentsProgressToolCall($: any, e: any, next: any) {
 
 export async function agentsProgressUiRenderAbovePrompt($: any, e: any, next: any) {
   if (e.props.hasSurvey) return next(e)
-  const ui = $.ui.resolve(e)
   const live = running()
-  let nested = await below(next, e)
+  const nested = await below(next, e)
   if (live.length) {
-    nested = band(ui, e, nested, {
-      title: 'Agents',
-      tone: 'accent',
-      busy: true,
-      pct: pctDone(),
-      pctLabel: `${live.length} running · ${finished().length}/${agents.length}`,
-      detail: undefined,
-      buttons: [{ key: 'open', label: `×${agents.length}`, plain: true, onPress: () => $.ui.open({ id: 'agents', title: 'Agents' }) }],
+    quiet({
+      key: 'agents',
+      text: `${live.length} agent${live.length > 1 ? 's' : ''} running`,
+      detail: `${finished().length}/${agents.length} done · click to open`,
+      onPress: () => $.ui.open({ id: 'agents', title: 'Agents' }),
     })
   }
   const done = todos.filter(t => t.status === 'completed').length
-  if (todos.length === 0 || done === todos.length) return nested
-  const cur = todos.find(t => t.status === 'in_progress')
-  return band(ui, e, nested, {
-    title: cur ? cur.activeForm || cur.content : 'Next: ' + (todos.find(t => t.status !== 'completed')?.content ?? ''),
-    tone: 'accent',
-    busy: Boolean(cur),
-    pct: (done / todos.length) * 100,
-    pctLabel: `Progress ${done}/${todos.length}`,
-  })
+  if (todos.length > 0 && done < todos.length) {
+    const cur = todos.find(t => t.status === 'in_progress')
+    const title = cur ? cur.activeForm || cur.content : 'Next: ' + (todos.find(t => t.status !== 'completed')?.content ?? '')
+    quiet({ key: 'todos', text: `${title.length > 40 ? `${title.slice(0, 39)}…` : title} ${done}/${todos.length}`, detail: title })
+  }
+  return nested
 }
 
 export async function agentsProgressUiRenderPaneAgents($: any, e: any) {
@@ -294,9 +287,14 @@ export async function cacheKeeperUiRenderAbovePrompt($: any, e: any, next: any) 
   if (e.props.hasSurvey || lastTouch === 0) return next(e)
   const now = await $.clock.now()
   const left = TTL - (now - lastTouch)
-  if (left >= WARN_BEFORE) return next(e) // only when the cache is about to go cold, or already is
+  if (left >= WARN_BEFORE) {
+    // calm: a segment in the shared line; the full band appears only when the cache is about to go cold, or already is
+    const nested = await below(next, e)
+    quiet({ key: 'cache', text: `Cache ${mins(left)}`, detail: `${fmtTok(cacheKeeperTokens)} ctx · next send ${cacheCost(1)}` })
+    return nested
+  }
   const warm = left > 0
-  const tone: Tone = !warm ? 'err' : left < WARN_BEFORE ? 'warn' : 'ok'
+  const tone: Tone = !warm ? 'err' : 'warn'
   const keeping = warmUntil > now
   const cold$ = cacheCost(0)
   const warm$ = cacheCost(1)
@@ -305,7 +303,6 @@ export async function cacheKeeperUiRenderAbovePrompt($: any, e: any, next: any) 
     tone,
     ring: true,
     pct: warm ? Math.max(0, (left / TTL) * 100) : 100,
-    busy: !warm,
     detail: warm ? `${fmtTok(cacheKeeperTokens)} ctx · next send ${warm$}` : `${fmtTok(cacheKeeperTokens)} ctx · next send rewrites it ${cold$} (warm ${warm$})`,
     chips: keeping ? [`keepwarm ${mins(warmUntil - now)}`] : [],
     right: keeping ? lastPing || 'no ping yet' : undefined,
@@ -434,19 +431,26 @@ export async function contextHealthUiRenderAbovePrompt($: any, e: any, next: any
   if (e.props.hasSurvey || percent === 0 || bandHidden) return next(e)
   const high = percent >= threshold
   const limits = contextHealthRates.map(r => `${r.kind.replace('five_hour', '5h').replace('seven_day', '7d')} ${Math.round(r.percentUsed)}%`).join(' · ')
+  const ctxChips = [
+    ...(turnNo ? [`turn ${turnNo}`] : []),
+    ...(speed ? [`${speed} tok/s`] : []),
+    ...(costNow ? [`${fmtCost(Math.max(0, costNow - costAtStart))} · ${fmtCost(costNow)}`] : []),
+    ...(auto ? [`auto @${threshold}%`] : []),
+  ]
+  const ctxTone = zoneTone(percent, threshold - 10, threshold)
+  if (ctxTone === 'ok') {
+    const nested = await below(next, e)
+    quiet({ key: 'context', text: `Context ${percent}%`, detail: [`${fmtTok(contextHealthTokens)} of ${fmtTok(windowSize)} tokens`, ...ctxChips].filter(Boolean).join(' · ') })
+    return nested
+  }
   return band($.ui.resolve(e), e, await below(next, e), {
     title: `Context ${percent}%`,
-    tone: zoneTone(percent, threshold - 10, threshold),
+    tone: ctxTone,
     ring: true,
     pct: percent,
     detail: high ? 'quality may drop: hand off or start fresh' : `${fmtTok(contextHealthTokens)} of ${fmtTok(windowSize)} tokens`,
     right: limits || undefined,
-    chips: [
-      ...(turnNo ? [`turn ${turnNo}`] : []),
-      ...(speed ? [`${speed} tok/s`] : []),
-      ...(costNow ? [`${fmtCost(Math.max(0, costNow - costAtStart))} · ${fmtCost(costNow)}`] : []),
-      ...(auto ? [`auto @${threshold}%`] : []),
-    ],
+    chips: ctxChips,
     buttons: [
       ...(high
       ? [
@@ -499,7 +503,6 @@ let allFiles: Row[] | undefined // flat index for search, built on first use
 let activity: Activity | undefined
 let phase = 0
 let ticking = false
-let dismissed = false
 let committedSet = new Set<string>() // files in commits not pushed yet (or the last commit)
 const seen = new Set<string>() // changed files already auto-expanded once
 
@@ -604,7 +607,6 @@ function filetreeTouch($: any, path: string | undefined, state: State) {
   if (!path) return
   const abs = path.startsWith('/') ? path : `${root}/${path}`
   touched.set(abs, { state, at: Date.now() })
-  dismissed = false // a new touch brings the band back
   for (let d = dirOf(abs); d.length > root.length; d = dirOf(d)) open.add(d)
   if (state === 'edited' || state === 'editing') allFiles = undefined
   void rebuild($)
@@ -966,22 +968,20 @@ export function filetreeUiRenderPaneFiletree($: any, e: any) {
 }
 
 export async function filetreeUiRenderAbovePrompt($: any, e: any, next: any) {
-  if (e.props.hasSurvey || touched.size === 0 || dismissed) return next(e)
+  if (e.props.hasSurvey || touched.size === 0) return next(e)
   if ((await $.ui.panes()).some(p => p.id === 'filetree')) return next(e)
   const now = Date.now()
   const live = activity && (activity.running || now - activity.at < 6_000) ? activity : undefined
   const edits = [...touched.values()].filter(t => t.state === 'edited' || t.state === 'editing').length
   const reads = touched.size - edits
-  return band($.ui.resolve(e), e, await below(next, e), {
-    title: live ? live.label : `Claude touched ${touched.size} file${touched.size > 1 ? 's' : ''}`,
-    tone: live ? (live.state === 'editing' || live.state === 'edited' ? 'accent' : live.state === 'committed' ? 'ok' : 'purple') : 'purple',
-    busy: live?.running,
-    detail: `${reads} read · ${edits} edited`,
-    buttons: [
-      { key: 'open', label: 'Open file tree', onPress: () => $.ui.open({ id: 'filetree', title: `Files: ${base(root || cwd)}` }) },
-      { key: 'x', label: '×', plain: true, onPress: () => { dismissed = true; filetreeRedraw($) } },
-    ],
+  const nested = await below(next, e)
+  quiet({
+    key: 'files',
+    text: `${touched.size} file${touched.size > 1 ? 's' : ''}`,
+    detail: `${live ? `${live.label} · ` : ''}${reads} read · ${edits} edited · click to open the file tree`,
+    onPress: () => $.ui.open({ id: 'filetree', title: `Files: ${base(root || cwd)}` }),
   })
+  return nested
 }
 
 // ===== usage-limits =====
@@ -1027,10 +1027,17 @@ export async function usageLimitsUiRenderAbovePrompt($: any, e: any, next: any) 
   const now = await $.clock.now()
   const left = (r: { resetsAt?: string }) => (r.resetsAt ? Date.parse(r.resetsAt) - now : 0)
   const rates = [...usageLimitRates].sort((a, b) => (a.kind === 'five_hour' ? -1 : 0) - (b.kind === 'five_hour' ? -1 : 0))
+  const peak = Math.max(...rates.map(r => r.percentUsed))
+  const detail = rates.map(r => `${LIMIT_SHORT[r.kind]} ${left(r) > 0 ? `${usageLeft(left(r))} (${usagePace(r, left(r)).replace('pace ', '')})` : 'reset pending'}`).join(' · ')
+  if (peak < 70) {
+    const nested = await below(next, e)
+    quiet({ key: 'usage', text: rates.map(r => `${LIMIT_SHORT[r.kind]} ${Math.round(r.percentUsed)}%`).join(' · '), detail })
+    return nested
+  }
   return band($.ui.resolve(e), e, await below(next, e), {
     title: 'Usage limits',
-    tone: zoneTone(Math.max(...rates.map(r => r.percentUsed)), 70, 90),
-    detail: rates.map(r => `${LIMIT_SHORT[r.kind]} ${left(r) > 0 ? `${usageLeft(left(r))} (${usagePace(r, left(r)).replace('pace ', '')})` : 'reset pending'}`).join(' · '),
+    tone: zoneTone(peak, 70, 90),
+    detail,
     bars: rates.map(r => ({ pct: r.percentUsed, label: LIMIT_SHORT[r.kind], tone: zoneTone(r.percentUsed, 70, 90) })),
   })
 }
@@ -1049,10 +1056,12 @@ const parse = (text: string): string[] => {
 }
 
 let steps: string[] = []
+let stepsOpen = false // suggestions stay folded behind a link until clicked
 let stepsGen = 0 // a late reply for an older prompt is ignored
 
 export function nextStepsPromptSubmit($: any, e: any, next: any) {
   steps = []
+  stepsOpen = false
   stepsGen += 1
   $.ui.invalidate('ui.render')
   return next(e)
@@ -1074,6 +1083,11 @@ export async function nextStepsTurnComplete($: any, e: any, next: any) {
 
 export async function nextStepsUiRenderAbovePrompt($: any, e: any, next: any) {
   if (e.props.hasSurvey || steps.length === 0) return next(e)
+  if (!stepsOpen) {
+    const nested = await below(next, e)
+    quiet({ key: 'next', text: 'Next ▸', tone: 'info', detail: `${steps.length} suggestions`, onPress: () => { stepsOpen = true; $.ui.invalidate('ui.render') } })
+    return nested
+  }
   return band($.ui.resolve(e), e, await below(next, e), {
     title: 'Next steps',
     tone: 'info',
@@ -1082,6 +1096,8 @@ export async function nextStepsUiRenderAbovePrompt($: any, e: any, next: any) {
     buttons: [{ key: 'x', label: '×', plain: true, onPress: () => { steps = []; $.ui.invalidate('ui.render') } }],
   })
 }
+
+let lineOpen = false // the shared status line shows each mod's detail
 
 // Each mod is on unless its userConfig flag is false (toggle in the config menu; the module reloads).
 export const register: Register = (on, options) => {
@@ -1110,8 +1126,7 @@ export const register: Register = (on, options) => {
     const n2 = (x: any) => (options.contextHealth === false ? n3(x) : contextHealthUiRenderAbovePrompt($, x, n3))
     const n1 = (x: any) => (options.cacheKeeper === false ? n2(x) : cacheKeeperUiRenderAbovePrompt($, x, n2))
     const drawn = await (options.agentsProgress === false ? n1(e) : agentsProgressUiRenderAbovePrompt($, e, n1))
-    if (endPass()) $.ui.invalidate('ui.render')
-    return drawn
+    return quietLine($.ui.resolve(e), drawn, lineOpen, () => { lineOpen = !lineOpen; void $.ui.invalidate('ui.render') })
   })
   if (options.agentsProgress !== false) on('ui.render', { component: 'Pane', requestId: 'agents' }, agentsProgressUiRenderPaneAgents)
   if (options.cacheKeeper !== false) on('command.run', { command: 'keepwarm' }, cacheKeeperCommandRunKeepwarm)

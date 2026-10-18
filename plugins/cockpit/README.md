@@ -1,6 +1,6 @@
 # cockpit
 
-Live panes and bands for session awareness. Six mods that show what your agents are doing, what your cache and context cost, where your plan limits stand, and which files are changing. Needs Claude Code 2.1.287+.
+Live panes and bands for session awareness. While all is calm, mods share one dim status line above the prompt (Details expands it); a mod draws its own band only when it needs attention. Six mods that show what your agents are doing, what your cache and context cost, where your plan limits stand, and which files are changing. Needs Claude Code 2.1.287+.
 
 ```
 /plugin marketplace add bharath-gp/ai-harness
@@ -24,7 +24,7 @@ Bands stack in the strip above the prompt; panes open beside the conversation.
 
 Watch subagents and your main task list.
 
-**Use:** while subagents run, a band above the prompt shows how many are running and the main session's todo/task progress. `/agents-info` opens the **Agents** panel: every spawned subagent (last 50) with type, description, model, elapsed time, status (running, done, failed), plus session cost, context tokens and tool-call counts. Each subagent type gets a stable colour. The panel can hide finished agents.
+**Use:** while subagents run, the status line above the prompt shows how many are running and the main session's todo/task progress. `/agents-info` opens the **Agents** panel: every spawned subagent (last 50) with type, description, model, elapsed time, status (running, done, failed), plus session cost, context tokens and tool-call counts. Each subagent type gets a stable colour. The panel can hide finished agents.
 
 ## cache-keeper
 

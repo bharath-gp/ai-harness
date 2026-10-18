@@ -12,7 +12,7 @@ test('context-health band shows fill and rate limits', async ($, on) => {
   for (const surface of ['terminal', 'desktop']) expect(JSON.stringify(await render($, surface, 'AbovePrompt'))).toContain('Context 42%')
 })
 
-test('next-steps band shows suggestions after a turn', async ($, on) => {
+test('next-steps stays folded behind a link after a turn', async ($, on) => {
   on('session.model', () => ({ value: 'claude-sonnet-5-5' }) as never)
   on('model.complete', () => ({ value: { isAnswered: true, text: '["Run the tests","Open a PR"]', usage: { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } } }) as never)
   on('session.usage', () => usage)
@@ -20,7 +20,7 @@ test('next-steps band shows suggestions after a turn', async ($, on) => {
   on('turn.complete', () => ({ text: '' }) as never)
   await ($ as any).turn.complete({ answer: 'done', reason: 'answer', durationMs: 1, turnId: 't', isAborted: false })
   await new Promise(r => setTimeout(r, 50))
-  for (const surface of ['terminal', 'desktop']) expect(JSON.stringify(await render($, surface, 'AbovePrompt'))).toContain('Run the tests')
+  for (const surface of ['terminal', 'desktop']) expect(JSON.stringify(await render($, surface, 'AbovePrompt'))).toContain('Next ▸')
 })
 
 test('filetree pane draws', async ($, on) => {
@@ -37,9 +37,9 @@ test('filetree pane draws', async ($, on) => {
   for (const surface of ['terminal', 'desktop']) expect(JSON.stringify(await render($, surface, 'Pane', 'filetree'))).toContain('a.ts')
 })
 
-test('context-health band shows turn, cost and dismiss', async ($, on) => {
+test('calm context shows one quiet line with a details toggle', async ($, on) => {
   let usd = 1
-  on('session.usage', () => ({ value: { context: { percent: 42, tokens: 84000, window: 200000 }, rateLimits: [], cost: { usd } } }) as never)
+  on('session.usage', () => ({ value: { context: { percent: 20, tokens: 40000, window: 200000 }, rateLimits: [], cost: { usd } } }) as never)
   on('clock.now', () => ({ value: 1_000_000 }) as never)
   on('turn.start', () => ({ turnId: 't' }) as never)
   on('prompt.submit', () => ({ text: 'hi' }) as never)
@@ -47,6 +47,7 @@ test('context-health band shows turn, cost and dismiss', async ($, on) => {
   usd = 1.5
   await ($ as any).prompt.submit({ text: 'hi', wait: false, origin: { kind: 'composer' } })
   const out = JSON.stringify(await render($, 'terminal', 'AbovePrompt'))
-  expect(out).toContain('turn 1')
-  expect(out).toContain('×')
+  expect(out).toContain('Context 20%')
+  expect(out).toContain('Details')
+  expect(out).not.toContain('turn 1')
 })
