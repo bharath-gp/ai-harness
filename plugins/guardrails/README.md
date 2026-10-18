@@ -12,7 +12,7 @@ Every mod is on by default. Turn one off in the plugin config menu (boolean fiel
 | Mod | Trigger | Commands |
 | --- | --- | --- |
 | [blast-radius](#blast-radius) | `Bash` tool call | none |
-| [secret-sentry](#secret-sentry) | `Write` and `Edit` tool calls | none |
+| [secret-sentry](#secret-sentry) | `Write`, `Edit` and `NotebookEdit` tool calls | none |
 | [reflect](#reflect) | every prompt you send | `/reflect-queue`, `/reflect-pause` |
 | [assumption-tracker](#assumption-tracker) | end of each turn | `/assumptions` |
 | [self-critique](#self-critique) | on demand, or each turn | `/critique` |
@@ -21,7 +21,7 @@ Every mod is on by default. Turn one off in the plugin config menu (boolean fiel
 
 Holds destructive shell commands until you confirm, and shows what they would hit.
 
-**Matches:** `rm -r/-f`, `git push --force` / `--force-with-lease` / `-f`, `git reset --hard`, `git clean -f`, `git checkout .` / `git restore .`, `git branch -D`, `mkfs` / `dd if=`, `find ... -delete`, `DROP TABLE` / `DROP DATABASE`.
+**Matches:** `rm -r/-R/-f` and `--recursive` / `--force`, `git push --force` / `--force-with-lease` / `-f` / `+refspec` / `--delete`, `git reset --hard`, `git clean -f`, `git checkout .` / `git restore .`, `git branch -D`, `mkfs` / `dd if=`, `find ... -delete`, `DROP TABLE` / `DROP DATABASE`.
 
 **Use:** nothing to do. When Claude runs one of these, an impact card appears above a Proceed/Cancel dialog: the files affected (for `rm`, the targets; for discards, everything uncommitted), their total size, and how many are untracked and so unrecoverable from git. Pick the proceed option (`Delete N files`, `Discard N files`, `Proceed`) or `Cancel`. Cancel denies the call and Claude is told you declined.
 
@@ -33,7 +33,7 @@ Blocks Claude from writing credentials into files.
 
 **Detects:** AWS access keys, Anthropic and OpenAI-style API keys, GitHub tokens, Slack tokens, PEM private keys, and hard-coded `api_key` / `secret` / `token` / `password` assignments with long string values.
 
-**Use:** nothing to do. A matching `Write` or `Edit` is denied with a message telling Claude to read the value from an env var; a toast and a status-line counter (`🛡 Secret Sentry · N blocked`) tell you it fired. `.env`, `.env.*`, `*.example` and `*.sample` files are exempt, since that is where secrets belong or placeholders live.
+**Use:** nothing to do. A matching `Write`, `Edit` or `NotebookEdit` is denied with a message telling Claude to read the value from an env var; a toast and a status-line counter (`🛡 Secret Sentry · N blocked`) tell you it fired. `.env`, `.env.*`, `*.example` and `*.sample` files are exempt, since that is where secrets belong or placeholders live. Secrets written through Bash (`echo ... > file`, heredocs) are not scanned.
 
 **Limits:** it checks file writes only, not shell commands or what Claude prints.
 

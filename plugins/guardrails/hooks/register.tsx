@@ -1,13 +1,13 @@
 import type { Register } from 'claude-code'
 import { band, beginPass, endPass, paneHeader } from './band'
 import { folderIcon, iconTile, textCard } from './kit'
-import { P, type Tone, bar, below, fit, isRich, svg } from './ui'
+import { P, type Tone, bar, below, fit, fmtSize, isRich, parsePorcelain, svg } from './ui'
 
 // ===== blast-radius =====
 // Destructive shell patterns worth a human look: [pattern, what it does].
-const RISKY: [RegExp, string][] = [
-  [/\brm\s+(-[a-zA-Z]*[rf][a-zA-Z]*\s+)+/, 'delete'],
-  [/\bgit\s+push\b[^\n;&|]*(--force\b|--force-with-lease\b|\s-f\b)/, 'force-push'],
+export const RISKY: [RegExp, string][] = [
+  [/\brm\s+((-[a-zA-Z]*[rRf][a-zA-Z]*|--recursive|--force)\s+)+/, 'delete'],
+  [/\bgit\s+push\b[^\n;&|]*(--force\b|--force-with-lease\b|\s-f\b|\s\+\S|--delete\b)/, 'force-push'],
   [/\bgit\s+reset\s+--hard\b/, 'discard'],
   [/\bgit\s+clean\s+-[a-zA-Z]*f/, 'discard'],
   [/\bgit\s+(checkout|restore)\s+(--\s+)?\.(\s|$)/, 'discard'],
@@ -22,7 +22,6 @@ type Impact = { cmd: string; verb: string; project: string; files: File[]; total
 
 let pending: Impact | undefined
 
-const fmtSize = (n: number) => (n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(n < 10240 ? 1 : 0)} KB` : `${(n / 1048576).toFixed(1)} MB`)
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`
 
 // Every file under `path`, with sizes (capped: a node_modules rm should not take a minute).
@@ -55,9 +54,9 @@ async function assess($: any, cmd: string, verb: string) {
     const set = new Set<string>((tracked?.stdout ?? '').split('\0').filter(Boolean).map((p: string) => `${cwd}/${p}`))
     for (const f of impact.files) f.tracked = set.has(f.path)
   } else if (verb === 'discard') {
-    const st = await $.process.run(['git', 'status', '--short'], { cwd, timeoutMs: 5000 }).catch(() => undefined)
-    for (const l of (st?.stdout ?? '').split('\n').filter(Boolean)) {
-      const p = `${cwd}/${l.slice(3)}`
+    const st = await $.process.run(['git', 'status', '--porcelain', '-z'], { cwd, timeoutMs: 5000 }).catch(() => undefined)
+    for (const row of parsePorcelain(st?.stdout ?? '')) {
+      const p = `${cwd}/${row.path}`
       const s = await $.fs.stat(p).catch(() => undefined)
       impact.files.push({ path: p, size: s?.size ?? 0, tracked: false }) // uncommitted work is not saved anywhere
     }
@@ -217,6 +216,10 @@ export const secretSentry: Register = on => {
   on('tool.call', { tool: 'Edit' }, ($, e, next) => guard($, e.file_path, e.new_string) ?? next(e)).catch(
     ($, e, next) => (next.called ? next(e) : { deny: `${$.plugin.name}: guard failed.` }),
   )
+
+  on('tool.call', { tool: 'NotebookEdit' }, ($, e, next) => guard($, e.notebook_path, e.new_source ?? '') ?? next(e)).catch(
+    ($, e, next) => (next.called ? next(e) : { deny: `${$.plugin.name}: guard failed.` }),
+  )
 }
 
 // ===== reflect =====
@@ -254,7 +257,7 @@ async function save($: any, f: Found, scope: Found['scope']) {
   const old: string = (await $.fs.exists(file)) ? await $.fs.read(file) : ''
   const bullet = `- ${f.rule}`
   let next: string
-  if (old.includes(START) && old.includes(END)) next = old.replace(END, `${bullet}\n${END}`)
+  if (old.includes(START) && old.includes(END)) next = old.replace(END, () => `${bullet}\n${END}`) // a function: `$&` in a rule must stay literal
   else next = `${old.trimEnd()}${old ? '\n\n' : ''}## Learned rules\n${START}\n${bullet}\n${END}\n`
   await $.fs.write(file, next)
   queue = queue.filter(q => q !== f)
@@ -329,6 +332,7 @@ const assumptionTrackerParse = (text: string): string[] => {
 
 let items: Item[] = []
 let task = ''
+let assumptionGen = 0 // a late reply for an older prompt is ignored
 
 function redraw($: any) { return $.ui.invalidate('ui.render') }
 
@@ -345,14 +349,17 @@ export async function assumptionTrackerCommandRunAssumptions($: any) {
 
 export function assumptionTrackerPromptSubmit($: any, e: any, next: any) {
   if (e.origin.kind !== 'plugin') task = e.text // fix prompts we send must not overwrite the task
+  assumptionGen += 1
   return next(e)
 }
 
 export async function assumptionTrackerTurnComplete($: any, e: any, next: any) {
   if (e.agentId === undefined && e.reason === 'answer' && task) {
+    const gen = assumptionGen
     void $.model
       .complete({ model: 'haiku', prompt: assumptionTrackerPROMPT(task, e.answer), maxTokens: 600, effort: 'low', timeoutMs: 20_000 })
       .then(r => {
+        if (gen !== assumptionGen) return
         items = r.isAnswered ? assumptionTrackerParse(r.text).map(text => ({ text, verdict: undefined })) : []
         redraw($)
       })
