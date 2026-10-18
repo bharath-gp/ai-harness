@@ -14,7 +14,7 @@ Bands stack in the strip above the prompt; panes open beside the conversation.
 | Mod | Shows | Commands |
 | --- | --- | --- |
 | [agents-progress](#agents-progress) | subagent panel, running-agents band, todo band | `/agents-info` |
-| [cache-keeper](#cache-keeper) | cache countdown, cold-send guard | `/keepwarm`, `/cache-tax` |
+| [cache-keeper](#cache-keeper) | cache countdown, cold-send dialog | `/keepwarm`, `/cache-tax` |
 | [context-health](#context-health) | context fill band | `/ctx-handoff`, `/autohandoff` |
 | [usage-limits](#usage-limits) | 5h and 7d plan limits | none |
 | [filetree](#filetree) | file tree pane with git and activity | `/filetree` |
@@ -35,7 +35,7 @@ The cache lives 1 hour. In its last 5 minutes, or once cold, a band shows time l
 **Use:**
 - `/keepwarm 90m` (or `2h`, `2h30m`) sends cheap cache-read pings starting 50 minutes after your last turn, for the window you give. It stops itself if a ping shows the cache was already cold. `/keepwarm off` stops; `/keepwarm status` reports what is armed and the last ping. The band also has a `Keep warm` / `Stop keepwarm` button.
 - `/cache-tax` prints cache state, context tokens and cold vs warm send cost.
-- **Cold-send guard:** the first prompt after the cache went cold is held with a message giving the estimated rewrite cost. Send again to pay it, or `/clear`.
+- **Cold-send dialog:** the first prompt after the cache went cold opens a dialog with the estimated rewrite cost. `Continue here` sends it anyway; `New session` clears and drops the prompt (send it again). Dismissing the dialog drops the prompt.
 - A toast warns when the cache will go cold in under 5 minutes.
 
 Pings are reads, not free: they cost tokens.
