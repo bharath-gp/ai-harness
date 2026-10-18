@@ -1,7 +1,7 @@
 {
   "name": "guardrails",
-  "version": "0.1.9",
-  "description": "Safety and review of Claude's output. Five mods, each toggled in the plugin config. blast-radius: holds destructive shell commands (rm -rf, git push --force, git reset --hard, DROP TABLE...) behind a card showing the files at risk; pick Proceed or Cancel. secret-sentry: denies Write/Edit/NotebookEdit that would put API keys, tokens or private keys in a file (.env and *.example exempt). reflect: spots lasting corrections in your prompts (or 'remember: ...') and offers to save them to ./CLAUDE.md or ~/.claude/CLAUDE.md; /reflect-queue, /reflect-pause. assumption-tracker: after each turn lists what Claude assumed; mark Right or Wrong and send a fix for the wrong ones; /assumptions. self-critique: /critique [auto|opus|sonnet|haiku] reviews Claude's last answer with a verdict, flaws and a Make this fix button.",
+  "version": "0.2.0",
+  "description": "Safety and review of Claude's output. Six mods, each toggled in the plugin config. blast-radius: holds destructive shell commands (rm -rf, git push --force, git reset --hard, DROP TABLE...) behind a card showing the files at risk; pick Proceed or Cancel. secret-sentry: denies Write/Edit/NotebookEdit that would put API keys, tokens or private keys in a file (.env and *.example exempt). reflect: spots lasting corrections in your prompts (or 'remember: ...') and offers to save them to ./CLAUDE.md or ~/.claude/CLAUDE.md; /reflect-queue, /reflect-pause. assumption-tracker: after each turn lists what Claude assumed; mark Right or Wrong and send a fix for the wrong ones; /assumptions. self-critique: /critique [auto|opus|sonnet|haiku] reviews Claude's last answer with a verdict, flaws and a Make this fix button. prompt-coach: holds the first prompt of a session and interviews you one question at a time (with options) in a side pane, then writes an improved prompt (role, goal, context, requirements, constraints, acceptance criteria) with your original quoted; Use, Copy, Request changes or Dismiss (sends the original); /sharpen <prompt> runs it on demand.",
   "userConfig": {
     "blastRadius": {
       "type": "boolean",
@@ -31,6 +31,12 @@
       "type": "boolean",
       "title": "self-critique",
       "description": "/critique panel that reviews Claude's last answer, with one-click fixes",
+      "default": true
+    },
+    "promptCoach": {
+      "type": "boolean",
+      "title": "prompt-coach",
+      "description": "Interviews you about your first prompt and rewrites it with the requirements captured",
       "default": true
     }
   }
