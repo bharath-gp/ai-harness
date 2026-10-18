@@ -1057,6 +1057,117 @@ export async function usageLimitsUiRenderAbovePrompt($: any, e: any, next: any) 
   return nested
 }
 
+// ===== token-meter =====
+type TmTok = { input: number; output: number; cacheRead: number; cacheWrite: number }
+const tmZero = (): TmTok => ({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 })
+const tmSum = (t: TmTok) => t.input + t.output + t.cacheRead + t.cacheWrite
+
+let tmSession = tmZero()
+let tmModels: Record<string, number> = {}
+let tmScan = { tokens: 0, files: 0, skipped: 0, done: false, scanning: false }
+let tmLiveAtScan = 0 // session tokens already inside the scan, so the project total does not count them twice
+let tmCostAtStart = 0
+let tmLastTurnCost = 0
+let tmTurns = 0
+
+// Reads each past transcript of this folder once; a message streamed over several lines counts once (by id).
+// shortcut: files over the 4 MiB $.fs.read limit are skipped and flagged, switch to $.process + jq if that matters.
+async function tmRescan($: any) {
+  if (tmScan.scanning) return
+  tmScan = { ...tmScan, scanning: true }
+  $.ui.invalidate('ui.render')
+  const slug = (await $.session.cwd()).replace(/[^a-zA-Z0-9]/g, '-')
+  const dir = `${(await $.env.get('CLAUDE_CONFIG_DIR')) ?? `${await $.env.get('HOME')}/.claude`}/projects/${slug}`
+  const seen = new Set<string>()
+  let tokens = 0
+  let files = 0
+  let skipped = 0
+  const entries = (await $.fs.exists(dir)) ? await $.fs.list(dir) : []
+  for (const f of entries) {
+    if (f.kind !== 'file' || !f.name.endsWith('.jsonl')) continue
+    files += 1
+    try {
+      const text = await $.fs.read(`${dir}/${f.name}`)
+      for (const line of text.split('\n')) {
+        if (!line.includes('"usage"')) continue
+        try {
+          const m = JSON.parse(line).message
+          if (!m?.usage || (m.id && seen.has(m.id))) continue
+          if (m.id) seen.add(m.id)
+          const u = m.usage
+          tokens += (u.input_tokens ?? 0) + (u.output_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0)
+        } catch {}
+      }
+    } catch {
+      skipped += 1
+    }
+  }
+  tmLiveAtScan = tmSum(tmSession)
+  tmScan = { tokens, files, skipped, done: true, scanning: false }
+  $.ui.invalidate('ui.render')
+}
+
+export async function tokenMeterSessionStart($: any, e: any, next: any) {
+  tmCostAtStart = (await $.session.usage()).cost?.usd ?? 0
+  void tmRescan($).catch(() => {
+    tmScan = { ...tmScan, scanning: false }
+  })
+  return next(e)
+}
+
+export async function tokenMeterTurnStart($: any, e: any, next: any) {
+  if (e.agentId === undefined) {
+    tmTurns += 1
+    tmCostAtStart = (await $.session.usage()).cost?.usd ?? tmCostAtStart
+  }
+  return next(e)
+}
+
+export async function* tokenMeterTurnStep($: any, e: any, next: any) {
+  for await (const chunk of next(e)) {
+    if (chunk.kind === 'stop' && chunk.usage) {
+      const u = chunk.usage
+      tmSession.input += u.input_tokens ?? 0
+      tmSession.output += u.output_tokens ?? 0
+      tmSession.cacheRead += u.cache_read_input_tokens ?? 0
+      tmSession.cacheWrite += u.cache_creation_input_tokens ?? 0
+      const n = String(u.model ?? 'unknown').replace(/^claude-/, '')
+      tmModels[n] = (tmModels[n] ?? 0) + (u.input_tokens ?? 0) + (u.output_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0)
+      $.ui.invalidate('ui.render')
+    }
+    yield chunk
+  }
+}
+
+export async function tokenMeterTurnComplete($: any, e: any, next: any) {
+  const done = await next(e)
+  if (e.agentId === undefined) tmLastTurnCost = Math.max(0, ((await $.session.usage()).cost?.usd ?? 0) - tmCostAtStart)
+  return done
+}
+
+export async function tokenMeterUiRenderAbovePrompt($: any, e: any, next: any) {
+  if (e.props.hasSurvey) return next(e)
+  const total = tmSum(tmSession)
+  const cost = (await $.session.usage()).cost?.usd ?? 0
+  const project = tmScan.tokens + (total - tmLiveAtScan)
+  const models = Object.entries(tmModels).sort((a, b) => b[1] - a[1]).map(([m, n]) => `${m} ${fmtTok(n)}`).join(' · ')
+  const projectLabel = !tmScan.done ? 'scanning…' : `${fmtTok(project)} tokens · ${tmScan.files} sessions${tmScan.skipped ? ` (${tmScan.skipped} too large, not counted)` : ''}`
+  const spec: BandSpec = {
+    title: 'Tokens',
+    tone: 'info',
+    detail: `this session ${fmtTok(total)}`,
+    chips: [`in ${fmtTok(tmSession.input)}`, `out ${fmtTok(tmSession.output)}`, `cache read ${fmtTok(tmSession.cacheRead)}`, `cache write ${fmtTok(tmSession.cacheWrite)}`],
+    rows: [
+      { key: 'project', label: `Project  ${projectLabel}`, hint: 'click to rescan', onPress: () => void tmRescan($) },
+      { key: 'cost', label: `Cost  ${fmtCost(cost)} session · ${fmtCost(tmLastTurnCost)} last turn${tmTurns ? ` · ${fmtCost(cost / tmTurns)}/turn` : ''}`, onPress: () => {} },
+      ...(models ? [{ key: 'models', label: `Models  ${models}`, onPress: () => {} }] : []),
+    ],
+  }
+  const nested = await below(next, e)
+  quiet({ key: 'tokens', text: `${fmtTok(total)} tok`, spec })
+  return nested
+}
+
 // ===== next-steps =====
 const PROMPT = (answer: string) =>
   `Given the assistant's last reply below, suggest exactly 3 short, concrete next prompts the user would plausibly send next (max 12 words each, imperative). Reply with only a JSON array of 3 strings.\n\n<reply>\n${answer.slice(0, 6000)}\n</reply>`
@@ -1110,7 +1221,8 @@ let lineOpen = false // the shared status line shows each mod's detail
 // Each mod is on unless its userConfig flag is false (toggle in the config menu; the module reloads).
 export const register: Register = (on, options) => {
   on('session.start', ($, e, next) => {
-    const n5 = (x: any) => next(x)
+    const n6 = (x: any) => next(x)
+    const n5 = (x: any) => (options.tokenMeter === false ? n6(x) : tokenMeterSessionStart($, x, n6))
     const n4 = (x: any) => (options.usageLimits === false ? n5(x) : usageLimitsSessionStart($, x, n5))
     const n3 = (x: any) => (options.filetree === false ? n4(x) : filetreeSessionStart($, x, n4))
     const n2 = (x: any) => (options.contextHealth === false ? n3(x) : contextHealthSessionStart($, x, n3))
@@ -1127,8 +1239,9 @@ export const register: Register = (on, options) => {
   })
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     beginPass()
-    const n6 = (x: any) => next(x)
-    const n5 = (x: any) => (options.nextSteps === false ? n6(x) : nextStepsUiRenderAbovePrompt($, x, n6))
+    const n7 = (x: any) => next(x)
+    const n6 = (x: any) => (options.nextSteps === false ? n7(x) : nextStepsUiRenderAbovePrompt($, x, n7))
+    const n5 = (x: any) => (options.tokenMeter === false ? n6(x) : tokenMeterUiRenderAbovePrompt($, x, n6))
     const n4 = (x: any) => (options.usageLimits === false ? n5(x) : usageLimitsUiRenderAbovePrompt($, x, n5))
     const n3 = (x: any) => (options.filetree === false ? n4(x) : filetreeUiRenderAbovePrompt($, x, n4))
     const n2 = (x: any) => (options.contextHealth === false ? n3(x) : contextHealthUiRenderAbovePrompt($, x, n3))
@@ -1146,10 +1259,17 @@ export const register: Register = (on, options) => {
     const n1 = (x: any) => (options.filetree === false ? n2(x) : filetreePromptSubmit($, x, n2))
     return options.cacheKeeper === false ? n1(e) : cacheKeeperPromptSubmit($, e, n1)
   })
-  if (options.contextHealth !== false) on('turn.start', contextHealthTurnStart)
-  if (options.contextHealth !== false) on('turn.step', contextHealthTurnStep)
+  on('turn.start', ($, e, next) => {
+    const n1 = (x: any) => (options.tokenMeter === false ? next(x) : tokenMeterTurnStart($, x, next))
+    return options.contextHealth === false ? n1(e) : contextHealthTurnStart($, e, n1)
+  })
+  on('turn.step', async function* ($, e, next) {
+    const n1 = (x: any) => (options.tokenMeter === false ? next(x) : tokenMeterTurnStep($, x, next))
+    return yield* (options.contextHealth === false ? n1(e) : contextHealthTurnStep($, e, n1))
+  })
   on('turn.complete', ($, e, next) => {
-    const n3 = (x: any) => next(x)
+    const n4 = (x: any) => next(x)
+    const n3 = (x: any) => (options.tokenMeter === false ? n4(x) : tokenMeterTurnComplete($, x, n4))
     const n2 = (x: any) => (options.nextSteps === false ? n3(x) : nextStepsTurnComplete($, x, n3))
     const n1 = (x: any) => (options.contextHealth === false ? n2(x) : contextHealthTurnComplete($, x, n2))
     return options.cacheKeeper === false ? n1(e) : cacheKeeperTurnComplete($, e, n1)

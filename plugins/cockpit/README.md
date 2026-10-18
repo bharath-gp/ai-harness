@@ -1,13 +1,13 @@
 # cockpit
 
-Live panes and bands for session awareness. While all is calm, mods share one dim status line above the prompt (Details expands it into full cards with rings, bars and buttons); a mod draws its own band only when it needs attention. Six mods that show what your agents are doing, what your cache and context cost, where your plan limits stand, and which files are changing. Needs Claude Code 2.1.287+.
+Live panes and bands for session awareness. While all is calm, mods share one dim status line above the prompt (Details expands it into full cards with rings, bars and buttons); a mod draws its own band only when it needs attention. Seven mods that show what your agents are doing, what your cache and context cost, where your plan limits stand, and which files are changing. Needs Claude Code 2.1.287+.
 
 ```
 /plugin marketplace add bharath-gp/ai-harness
 /plugin install cockpit@ai-harness
 ```
 
-Every mod is on by default. Turn one off in the plugin config menu (boolean fields `agentsProgress`, `cacheKeeper`, `contextHealth`, `filetree`, `nextSteps`, `usageLimits`); the plugin reloads. Mods are not sandboxed: read `hooks/register.tsx` first.
+Every mod is on by default. Turn one off in the plugin config menu (boolean fields `agentsProgress`, `cacheKeeper`, `contextHealth`, `filetree`, `nextSteps`, `tokenMeter`, `usageLimits`); the plugin reloads. Mods are not sandboxed: read `hooks/register.tsx` first.
 
 Bands stack in the strip above the prompt; panes open beside the conversation.
 
@@ -16,6 +16,7 @@ Bands stack in the strip above the prompt; panes open beside the conversation.
 | [agents-progress](#agents-progress) | subagent panel, running-agents band, todo band | `/agents-info` |
 | [cache-keeper](#cache-keeper) | cache countdown, cold-send dialog | `/keepwarm`, `/cache-tax` |
 | [context-health](#context-health) | context fill band | `/ctx-handoff`, `/autohandoff` |
+| [token-meter](#token-meter) | session tokens, project total, cost | none |
 | [usage-limits](#usage-limits) | 5h and 7d plan limits | none |
 | [filetree](#filetree) | file tree pane with git and activity | `/filetree` |
 | [next-steps](#next-steps) | three suggested prompts | none |
@@ -48,6 +49,14 @@ Tracks how full the context window is.
 
 - `/ctx-handoff` has Claude write a handoff brief to `.claude/handoff.md`, clears the context (only if the turn finished and the file exists; otherwise the context is kept), then pre-fills a prompt to read it and continue. Review before sending.
 - `/autohandoff 60` triggers the same handoff automatically at 60% context (accepts 10 to 95; default 50). `/autohandoff off` disables it.
+
+## token-meter
+
+Token usage for the session and the project.
+
+**Shows:** the status line carries the tokens used this session (input, output, cache read and cache write added together). Details expands it to the four token types, the project total (every past session of this folder, read from `~/.claude/projects/<folder>/*.jsonl`, plus this session's new tokens; click the row to rescan), session cost with last turn and average per turn, and tokens per model.
+
+No commands. Limits: the session count starts when the mod loads (a hot reload resets it); cost is the total Claude Code reports, so there is no project cost; transcript files over 4 MiB are skipped and flagged.
 
 ## usage-limits
 
