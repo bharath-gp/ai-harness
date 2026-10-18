@@ -1,5 +1,5 @@
 // Shared band and pane pieces, so every mod looks the same. Single source: scripts/sync-ui.sh copies it to plugins/*/hooks/band.tsx.
-import { bar, chip, dot, fit, hbar, isRich, P, ring, svg, svgWidth, text, tw, type Tone } from './ui'
+import { bar, chip, dot, fit, hbar, isRich, P, svg, svgWidth, text, tw, type Tone } from './ui'
 
 export type Btn = { key: string; label: string; onPress: () => unknown; hotkey?: string; plain?: boolean }
 export type RowBtn = { key: string; label: string; hint?: string; hotkey?: string; onPress: () => unknown }
@@ -7,109 +7,80 @@ export type BandSpec = {
   title: string
   tone: Tone
   detail?: string
-  pct?: number // 0-100: a ring (ring: true) or a pill bar
-  bars?: { pct: number; label: string; tone?: Tone }[] // several pill bars in one band (label inside the pill), instead of pct
-  pctLabel?: string // text inside the pill bar, e.g. "Review 3/4"
+  pct?: number // 0-100: a percent (ring: true) or a text bar
+  bars?: { pct: number; label: string; tone?: Tone }[] // several text bars in one band, instead of pct
+  pctLabel?: string // text before the bar, e.g. "Review 3/4"
   ring?: boolean
-  busy?: boolean // pulse the dot
+  busy?: boolean // unused in text bands
   chips?: string[]
   right?: string
   buttons?: Btn[]
   rows?: RowBtn[] // one clickable line each, under the card
-  maxW?: number
+  maxW?: number // unused in text bands
 }
 
-const H = 36
-// Button column: as wide as the widest button set in the last pass (never under MIN_ACTION_COLS, so it matches across plugins),
-// the same in every band so the buttons line up. A render pass is `beginPass()` ... `endPass()` around the AbovePrompt chain.
-const MIN_ACTION_COLS = 13
-let actionCols = MIN_ACTION_COLS
-let needs: Record<string, number> = {}
-const widest = () => Math.max(MIN_ACTION_COLS, ...Object.values(needs))
+// Host colour names, so bands follow the terminal/desktop theme like the rest of the UI.
+const HOST: Record<Tone, string> = { accent: 'suggestion', info: 'suggestion', purple: 'suggestion', ok: 'success', warn: 'warning', err: 'error' }
+
+// Calm state: a mod adds a short segment to one shared line instead of drawing its own band. `detail` shows when expanded.
+export type Seg = { key: string; text: string; tone?: Tone; detail?: string; onPress?: () => unknown }
+let segs: Seg[] = []
 export const beginPass = () => {
-  actionCols = widest()
-  needs = {}
+  segs = []
 }
-// true when this pass found a different width: the caller redraws once so every band uses it
-export const endPass = () => widest() !== actionCols
-const RIGHT_PX = 250 // fixed right region (bar, chips, side text): titles truncate at the same x in every band
+// Bands are drawn inner-first, so a new segment goes to the front to keep the outermost mod on the left.
+export const quiet = (s: Seg) => {
+  segs.unshift(s)
+}
 
-// The band above the prompt: one card, same anatomy in every mod. `nested` is `await below(next, e)` (the bands beneath),
-// `ui` is `$.ui.resolve(e)`: `$` never crosses an import, so the mod passes both in.
-export const band = (ui: any, e: any, nested: unknown, s: BandSpec) => {
+// The one line above the prompt: every calm segment, plus a toggle for their details. `nested` is what the bands beneath drew.
+export const quietLine = (ui: any, nested: unknown, expanded: boolean, toggle: () => unknown) => {
+  if (!segs.length) return nested
   const { Box, Text, Button } = ui
-  const color = P[s.tone]
+  return (
+    <Box flexDirection="column">
+      <Box flexDirection="row" alignItems="center" gap={2}>
+        {segs.map(s => {
+          const label = <Text color={s.tone ? HOST[s.tone] : undefined} dimColor={!s.tone}>{s.text}</Text>
+          return s.onPress ? <Button key={s.key} plain onPress={s.onPress}>{label}</Button> : <Box key={s.key}>{label}</Box>
+        })}
+        <Box flexGrow={1} />
+        <Button key="details" plain label={expanded ? 'Less' : 'Details'} onPress={toggle} />
+      </Box>
+      {expanded && segs.filter(s => s.detail).map(s => <Box key={`d-${s.key}`}><Text dimColor>{`${s.text}: ${s.detail}`}</Text></Box>)}
+      {nested}
+    </Box>
+  )
+}
+
+// A mod that needs attention: one plain text row, same anatomy in every mod. `nested` is `await below(next, e)` (the bands beneath),
+// `ui` is `$.ui.resolve(e)`: `$` never crosses an import, so the mod passes both in.
+export const band = (ui: any, _e: any, nested: unknown, s: BandSpec) => {
+  const { Box, Text, Button } = ui
+  const color = HOST[s.tone]
   const bars = s.bars ?? (s.pct !== undefined && !s.ring ? [{ pct: s.pct, label: s.pctLabel ?? '', tone: undefined }] : [])
-  const bs = s.buttons ?? []
-  needs[s.title] = bs.reduce((n, b) => n + b.label.length + (b.plain ? 1 : 2) + (b.hotkey ? 2 : 0) + 1, 1)
-  const ACTION_COLS = actionCols
   const buttons = (s.buttons ?? []).map(b => <Button key={b.key} label={b.label} hotkey={b.hotkey} plain={b.plain} onPress={b.onPress} />)
   const rows = (s.rows ?? []).map(r => (
     <Button key={r.key} plain hotkey={r.hotkey} onPress={r.onPress}>
-      <Text color={P.muted}>{r.hotkey ? `${r.hotkey} ` : '› '}</Text>
+      <Text dimColor>{r.hotkey ? `${r.hotkey} ` : '› '}</Text>
       <Text>{r.label}</Text>
-      <Text color={P.muted}>{r.hint ? `  ${r.hint}` : ''}</Text>
+      <Text dimColor>{r.hint ? `  ${r.hint}` : ''}</Text>
     </Button>
   ))
-
-  if (isRich(ui, e)) {
-    const { Svg } = ui
-    const W = Math.min(s.maxW ?? 1600, svgWidth(e.props.bodyColumns, ACTION_COLS * 8 + 24)) // every band the same width
-    let right = W - 12
-    let body = `<rect class="c" x="0.5" y="0.5" width="${W - 1}" height="${H - 1}" rx="9"/>`
-    for (const c of [...(s.chips ?? [])].reverse()) {
-      const k = chip(0, 9, c, color)
-      right -= k.w
-      body += chip(right, 9, c, color).svg
-      right -= 6
-    }
-    if (s.right) {
-      body += text(right - 2, 22, s.right, { size: 11, cls: 'm', anchor: 'end' })
-      right -= tw(s.right, 11) + 14
-    }
-    const tx = 38
-    body += s.ring && s.pct !== undefined ? ring(20, 18, 9, s.pct, color, s.busy) : dot(20, 18, color, s.busy)
-    const barW = bars.length > 1 ? 110 : bars.length ? 170 : 0
-    const hasRight = Boolean(bars.length || s.chips?.length || s.right)
-    const textW = Math.max(120, W - tx - 16 - (bars.length > 1 ? bars.length * (barW + 56) + 10 : hasRight ? RIGHT_PX : 0))
-    body += text(tx, s.detail ? 16 : 22, fit(s.title, textW, 13), { size: 13, weight: 600 })
-    if (s.detail) body += text(tx, 29, fit(s.detail, textW, 11), { size: 11, cls: 'm' })
-    for (const b of [...bars].reverse()) {
-      // pill bar with its label inside, as in savvy-progress, then the percent
-      const bc = b.tone ? P[b.tone] : color
-      const bx = right - barW - 44
-      const fillW = Math.max(26, (Math.min(100, b.pct) / 100) * barW)
-      body += `<defs><clipPath id="pb${bx}"><rect x="${bx}" y="9" width="${barW}" height="18" rx="9"/></clipPath></defs><rect class="k" x="${bx}" y="9" width="${barW}" height="18" rx="9"/><g clip-path="url(#pb${bx})"><rect${s.busy ? ' class="live"' : ''} x="${bx}" y="9" width="${fillW}" height="18" rx="9" fill="${bc}"/></g>`
-      if (b.label) body += text(bx + fillW / 2, 22, fit(b.label, fillW - 8, 11), { size: 11, weight: 700, anchor: 'middle', fill: '#1b1d22' })
-      body += text(bx + barW + 8, 22, `${Math.round(b.pct)}%`, { size: 12, cls: 'm' })
-      right = bx - 12
-    }
-    return (
-      <Box flexDirection="column">
-        <Box flexDirection="row" alignItems="center" gap={1}>
-          <Svg source={svg(W, H, body)} alt={[s.title, s.detail].filter(Boolean).join(': ')} width={W} height={H} />
-          <Box width={ACTION_COLS} flexDirection="row" alignItems="center" gap={1}>
-            {buttons}
-          </Box>
-        </Box>
-        {rows}
-        {nested}
-      </Box>
-    )
-  }
-
   return (
     <Box flexDirection="column">
-      <Box flexDirection="row" gap={1}>
+      <Box flexDirection="row" alignItems="center" gap={2}>
         <Text color={color} bold>● {s.title}</Text>
+        {s.pct !== undefined && s.ring ? <Text color={color}>{Math.round(s.pct)}%</Text> : null}
         {bars.map(b => (
-          <Text key={b.label || 'bar'} color={b.tone ? P[b.tone] : color}>{b.label ? `${b.label} ` : ''}{hbar(b.pct, 10)} {Math.round(b.pct)}%</Text>
+          <Text key={b.label || 'bar'} color={b.tone ? HOST[b.tone] : color}>{b.label ? `${b.label} ` : ''}{hbar(b.pct, 10)} {Math.round(b.pct)}%</Text>
         ))}
-        {s.detail && <Text color={P.muted}>{s.detail}</Text>}
+        {s.detail && <Text dimColor>{s.detail}</Text>}
         {(s.chips ?? []).map(c => (
           <Text key={c} color={color}>[{c}]</Text>
         ))}
-        {s.right && <Text color={P.muted}>{s.right}</Text>}
+        {s.right && <Text dimColor>{s.right}</Text>}
+        <Box flexGrow={1} />
         {buttons}
       </Box>
       {rows}
