@@ -541,11 +541,14 @@ type Coach = {
   wantDraft: boolean // what Retry repeats after an error
   busy: string
   err: string
+  tipOnly?: boolean // the prompt carries attachments: it was sent as typed, the improved text is only offered to copy
+  fromSubmit?: boolean // the session's first prompt: a clear one is sent on with a 'Looks good' note
 }
 
 const COACH_MAX = 10
 let coach: Coach | undefined
-let coachSeen = false // only the session's first prompt is coached; /sharpen coaches any
+// Per-session "coached" flag in $.state (survives hot reload); only the session's first prompt is coached, /sharpen coaches any.
+const coachedRef = { plugin: 'guardrails', key: 'coached' } as const
 
 const coachQAText = (c: Coach) => c.qa.map(x => `Q: ${x.q}\nA: ${x.a}`).join('\n\n') || '(none yet)'
 
@@ -588,6 +591,10 @@ async function coachAsk($: any, c: Coach) {
   const r = await $.model.complete({ model: await $.session.model(), prompt: coachQuestionPROMPT(c), maxTokens: 500, effort: 'low', timeoutMs: 45_000 })
   if (coach !== c) return
   const q = r.isAnswered ? coachParse(r.text) : undefined
+  if (q?.done && c.qa.length === 0 && !c.changes && c.fromSubmit) {
+    $.ui.toast('Prompt coach: Looks good')
+    return coachClose($, c.tipOnly ? undefined : c.original)
+  }
   if (q?.done || (q && c.qa.length >= COACH_MAX)) return coachDraft($, c)
   c.busy = ''
   if (q) c.q = { question: q.question, options: q.options }
@@ -626,8 +633,8 @@ async function coachClose($: any, text: string | undefined) {
 }
 
 // Opens the pane and starts the interview; false when no surface draws a pane (the prompt then goes through unchanged).
-async function coachStart($: any, text: string): Promise<boolean> {
-  const c: Coach = { original: text, qa: [], ctx: '', asking: false, wantDraft: false, busy: 'Thinking…', err: '' }
+async function coachStart($: any, text: string, fromSubmit = false, tipOnly = false): Promise<boolean> {
+  const c: Coach = { fromSubmit, tipOnly, original: text, qa: [], ctx: '', asking: false, wantDraft: false, busy: 'Thinking…', err: '' }
   coach = c
   const r = await $.ui.open({ id: 'coach', title: 'Prompt coach', focus: true })
   if (!r.isPlaced) {
@@ -654,9 +661,13 @@ export async function promptCoachCommandRunSharpen($: any, e: any) {
 
 export async function promptCoachPromptSubmit($: any, e: any, next: any) {
   const t = e.text.trim()
-  if (e.origin.kind === 'plugin' || coachSeen || e.command || t.startsWith('/') || t.length < 40 || t.length > 2000 || e.attachments?.length) return next(e)
-  coachSeen = true
-  if (!(await coachStart($, t))) return next(e)
+  if (e.origin?.kind === 'plugin' || e.command || t.startsWith('/') || !t) return next(e)
+  const member = { ...coachedRef, id: await $.session.id() }
+  if ((await $.state.get(member)).value) return next(e)
+  await $.state.set(member, true) // set on the first prompt whether or not a tip is shown
+  // Attachments can't be re-sent with a rewritten prompt, so such a prompt goes through as typed and the pane only offers the improved text.
+  const tipOnly = !!e.attachments?.length
+  if (!(await coachStart($, t, true, tipOnly)) || tipOnly) return next(e)
   return { drop: 'prompt-coach: answer the interview, then pick Use or Dismiss.' }
 }
 
@@ -666,10 +677,11 @@ export function promptCoachUiRenderPaneCoach($: any, e: any) {
   const c = coach
   if (!c) return <Text color={P.muted}>No prompt being coached.</Text>
   const n = c.qa.length
-  const dismiss = <Button key="dismiss" label="Dismiss (send original)" onPress={() => void coachClose($, c.original)} />
+  const dismiss = <Button key="dismiss" label={c.tipOnly ? 'Dismiss' : 'Dismiss (send original)'} onPress={() => void coachClose($, c.tipOnly ? undefined : c.original)} />
   return (
     <Box flexDirection="column" gap={1}>
       {paneHeader(ui, e, { title: 'Prompt coach', sub: c.draft ? 'Review your prompt' : c.busy || `Question ${n + 1} of ${COACH_MAX}`, pct: c.draft ? 100 : (n / COACH_MAX) * 100, tone: 'purple' })}
+      {c.tipOnly && <Text color={P.muted}>Your prompt and its attachments were already sent. Copy the improved version to use next time.</Text>}
       {c.err && textCard(ui, { key: 'err', color: P.err, text: c.err })}
       {c.busy && <Text color={P.muted}>{c.busy}</Text>}
       {c.q && !c.busy && (
@@ -716,7 +728,7 @@ export function promptCoachUiRenderPaneCoach($: any, e: any) {
             />
           )}
           <Box flexDirection="row" gap={1}>
-            <Button key="use" label="Use" variant="primary" onPress={() => void coachClose($, c.draft)} />
+            {!c.tipOnly && <Button key="use" label="Use" variant="primary" onPress={() => void coachClose($, c.draft)} />}
             <Button key="copy" label="Copy" onPress={async () => { $.ui.toast((await $.ui.copy({ text: c.draft, surface: e.surface })).isCopied ? 'Copied' : 'Copy failed') }} />
             <Button key="change" label="Request changes" onPress={() => { c.asking = !c.asking; redraw($) }} />
             {dismiss}
