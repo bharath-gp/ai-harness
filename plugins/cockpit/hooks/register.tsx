@@ -1151,20 +1151,31 @@ export async function tokenMeterUiRenderAbovePrompt($: any, e: any, next: any) {
   const cost = (await $.session.usage()).cost?.usd ?? 0
   const project = tmScan.tokens + (total - tmLiveAtScan)
   const models = Object.entries(tmModels).sort((a, b) => b[1] - a[1]).map(([m, n]) => `${m} ${fmtTok(n)}`).join(' · ')
-  const projectLabel = !tmScan.done ? 'scanning…' : `${fmtTok(project)} tokens · ${tmScan.files} sessions${tmScan.skipped ? ` (${tmScan.skipped} too large, not counted)` : ''}`
+  const projectSub = !tmScan.done ? 'scanning…' : `${tmScan.files} sessions${tmScan.skipped ? ` (${tmScan.skipped} too large, not counted)` : ''}`
   const spec: BandSpec = {
     title: 'Tokens',
     tone: 'info',
     detail: `this session ${fmtTok(total)}`,
     chips: [`in ${fmtTok(tmSession.input)}`, `out ${fmtTok(tmSession.output)}`, `cache read ${fmtTok(tmSession.cacheRead)}`, `cache write ${fmtTok(tmSession.cacheWrite)}`],
-    rows: [
-      { key: 'project', label: `Project  ${projectLabel}`, hint: 'click to rescan', onPress: () => void tmRescan($) },
-      { key: 'cost', label: `Cost  ${fmtCost(cost)} session · ${fmtCost(tmLastTurnCost)} last turn${tmTurns ? ` · ${fmtCost(cost / tmTurns)}/turn` : ''}`, onPress: () => {} },
-      ...(models ? [{ key: 'models', label: `Models  ${models}`, onPress: () => {} }] : []),
-    ],
   }
+  const more: BandSpec[] = [
+    {
+      title: 'Project',
+      tone: 'info',
+      detail: projectSub,
+      chips: tmScan.done ? [`${fmtTok(project)} tokens`] : [],
+      buttons: [{ key: 'rescan', label: tmScan.scanning ? 'Scanning…' : 'Rescan', onPress: () => void tmRescan($) }],
+    },
+    {
+      title: 'Cost',
+      tone: 'info',
+      detail: 'this session',
+      chips: [fmtCost(cost), `last turn ${fmtCost(tmLastTurnCost)}`, ...(tmTurns ? [`${fmtCost(cost / tmTurns)}/turn`] : [])],
+    },
+    ...(models ? [{ title: 'Models', tone: 'info' as const, detail: models }] : []),
+  ]
   const nested = await below(next, e)
-  quiet({ key: 'tokens', text: `${fmtTok(total)} tok`, spec })
+  quiet({ key: 'tokens', text: `${fmtTok(total)} tok`, spec, more })
   return nested
 }
 

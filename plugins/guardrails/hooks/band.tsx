@@ -23,7 +23,7 @@ export type BandSpec = {
 const HOST: Record<Tone, string> = { accent: 'suggestion', info: 'suggestion', purple: 'suggestion', ok: 'success', warn: 'warning', err: 'error' }
 
 // Calm state: a mod adds a short segment to one shared line instead of drawing its own band. `spec` is the rich card shown when expanded.
-export type Seg = { key: string; text: string; tone?: Tone; spec?: BandSpec; onPress?: () => unknown }
+export type Seg = { key: string; text: string; tone?: Tone; spec?: BandSpec; more?: BandSpec[]; onPress?: () => unknown }
 let segs: Seg[] = []
 export const beginPass = () => {
   segs = []
@@ -47,7 +47,12 @@ export const quietLine = (ui: any, e: any, nested: unknown, expanded: boolean, t
         <Box flexGrow={1} />
         <Button key="details" plain label={expanded ? 'Less' : 'Details'} onPress={toggle} />
       </Box>
-      {expanded && segs.filter(s => s.spec).map(s => <Box key={`d-${s.key}`}>{card(ui, e, s.spec!)}</Box>)}
+      {expanded && segs.filter(s => s.spec).map(s => (
+        <Box key={`d-${s.key}`} flexDirection="column">
+          {card(ui, e, s.spec!)}
+          {(s.more ?? []).map(m => <Box key={m.title}>{card(ui, e, m)}</Box>)}
+        </Box>
+      ))}
       {nested}
     </Box>
   )
