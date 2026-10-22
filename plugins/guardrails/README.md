@@ -70,13 +70,13 @@ A second opinion on Claude's last answer.
 
 ## prompt-coach
 
-Turns a rough first prompt into a complete one.
+Rewrites your first prompt so the main session grills you before it starts.
 
-**Use:** when you send the first prompt of a session (any length; slash commands and plugin-sent prompts do not count) it is held and the `Prompt coach` pane opens. Which prompt is first is a per-session flag kept in `$.state` (keyed by session id), set on that prompt whether or not it is coached, so it fires once per session and a hot reload cannot re-arm it. If the first prompt is already clear (the model has no question), a `Prompt coach: Looks good` toast shows and your prompt is sent unchanged. A first prompt with attachments (images, documents) is not held, since a rewritten prompt cannot carry them: it is sent as typed with its attachments, and the pane still interviews you and offers the improved text to `Copy` for next time (no `Use`). The pane asks one question at a time, each with 2 to 4 options plus an "Other" box; the model decides when it has enough, up to 10 questions. `Back` revisits the last answer, `Finish now` skips ahead. It then writes an improved prompt (role, goal, context, requirements, constraints, out of scope, acceptance criteria, output format) with your original quoted verbatim. `Use` sends it, `Copy` copies it, `Request changes` regenerates it from your note, `Dismiss` sends your original unchanged. If no surface can draw a pane, the prompt is sent as is.
+**Use:** when you send the first prompt of a session (any length; a first `/command` or skill prompt counts, plugin-sent prompts do not) it is held and the `Prompt coach` pane shows one improved prompt (role, goal, context, requirements, constraints, out of scope, acceptance criteria, output format). It always includes a "Before you start" section telling the main session to ask you, one question at a time, about every ambiguity and unclear requirement before doing any work. `Use in prompt box` puts it in the prompt input to edit and send, `Copy` copies it, `Request changes` regenerates it from your note, `Dismiss` sends your original unchanged. A first prompt that starts with `/command args` keeps that line verbatim at the top of the rewrite, and the rewrite takes the skill into account. A first prompt with attachments is sent as typed and the pane only offers the improved text. The coach never auto-triggers after the first prompt: a per-session flag in `$.state` (keyed by session id) is set on that prompt however you answer it, so later messages, a reload or a dismissal never re-arm it. If no surface can draw a pane, the prompt is sent as is.
 
-**Commands:** `/sharpen <prompt>` runs the interview on any prompt, at any time.
+**Commands:** `/sharpen [prompt]` coaches any prompt at any time, whatever the flag says. With no text it uses the current prompt input, then your last message.
 
-**Context:** the interviewer sees your prompt, `CLAUDE.md` and the top-level file names only, so it does not ask what the project already answers.
+**Context:** the coach sees your prompt, `CLAUDE.md` and the top-level file names only. It asks you nothing itself.
 
 ## Develop
 
