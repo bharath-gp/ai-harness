@@ -529,45 +529,35 @@ export function selfCritiqueUiRenderPaneCritique($: any, e: any) {
 }
 
 // ===== prompt-coach =====
-type CoachQA = { q: string; options: string[]; a: string }
 type Coach = {
   original: string
-  qa: CoachQA[]
   ctx: string
-  q?: { question: string; options: string[] }
   draft?: string
   changes?: string
   asking: boolean // the "request changes" box is open
-  wantDraft: boolean // what Retry repeats after an error
   busy: string
   err: string
-  tipOnly?: boolean // the prompt carries attachments: it was sent as typed, the improved text is only offered to copy
-  fromSubmit?: boolean // the session's first prompt: a clear one is sent on with a 'Looks good' note
+  tipOnly?: boolean // the prompt carries attachments: it was sent as typed, the improved text is only offered
+  fromSubmit?: boolean // the session's first prompt, held until the user picks Use or Dismiss
 }
 
-const COACH_MAX = 10
 let coach: Coach | undefined
-// Per-session "coached" flag in $.state (survives hot reload); only the session's first prompt is coached, /sharpen coaches any.
+// Per-session "offered" flag in $.state (survives hot reload); only the session's first prompt is auto-coached, /sharpen coaches any.
 const coachedRef = { plugin: 'guardrails', key: 'coached' } as const
 
-const coachQAText = (c: Coach) => c.qa.map(x => `Q: ${x.q}\nA: ${x.a}`).join('\n\n') || '(none yet)'
+// A prompt that opens with /command or a skill keeps that first line verbatim in front of the reworded text.
+const coachCommandLine = (text: string) => (text.startsWith('/') ? text.split('\n')[0].trim() : '')
 
-const coachQuestionPROMPT = (c: Coach) =>
-  `You are a requirements interviewer. The user is about to send the prompt below to a coding assistant. Ask the single most valuable next question to pin down the exact requirements. One question only, with 2-4 mutually exclusive answer options, the first being your recommendation. Never ask what the project context already answers. Reply done once requirements, constraints, scope and acceptance criteria are clear. Reply with only JSON: {"done":false,"question":"...","options":["..."]} or {"done":true}.\n\n<project_context>\n${c.ctx}\n</project_context>\n<original_prompt>\n${c.original}\n</original_prompt>\n<answers_so_far>\n${coachQAText(c)}\n</answers_so_far>`
-
-const coachDraftPROMPT = (c: Coach) =>
-  `Write an improved prompt for a coding assistant from the material below, following prompting best practices. Write it to the assistant in second person. Use these sections, omitting any with nothing to say: Role (persona), Goal (intent and why), Context, Requirements (carry every captured answer), Constraints, Out of scope, Acceptance criteria, Output format. End with an "Original request" section quoting the original prompt verbatim. Reply with only the prompt text, no preamble and no code fences.\n\n<project_context>\n${c.ctx}\n</project_context>\n<original_prompt>\n${c.original}\n</original_prompt>\n<answers>\n${coachQAText(c)}\n</answers>` +
-  (c.changes ? `\n<previous_draft>\n${c.draft}\n</previous_draft>\n<requested_changes>\n${c.changes}\n</requested_changes>` : '')
-
-const coachParse = (text: string): { done: boolean; question: string; options: string[] } | undefined => {
-  try {
-    const j = JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1))
-    if (j.done === true) return { done: true, question: '', options: [] }
-    const options = Array.isArray(j.options) ? j.options.filter((s: unknown): s is string => typeof s === 'string').slice(0, 4) : []
-    return typeof j.question === 'string' && j.question ? { done: false, question: j.question, options } : undefined
-  } catch {
-    return undefined
-  }
+const coachDraftPROMPT = (c: Coach) => {
+  const cmd = coachCommandLine(c.original)
+  return (
+    `Rewrite the user's prompt below as one better prompt for a coding assistant, following prompting best practices. Write it to the assistant in second person. Use these sections, omitting any with nothing to say: Role (persona), Goal (intent and why), Context, Requirements, Constraints, Out of scope, Acceptance criteria, Output format. Never invent requirements the user did not state. Always include a section "Before you start" instructing the assistant to grill the user, before doing any work, about every ambiguity, missing requirement and unstated assumption in the request: ask one question at a time, give options with a recommendation, look at the project itself for anything it can answer, and wait for the answers before starting. The assistant does the questioning, you do not ask anything. ` +
+    (cmd
+      ? `The prompt opens with the slash command or skill line ${JSON.stringify(cmd)}; take what that skill does into account. Do not repeat that line and do not quote the original: reply with only the text that follows it.`
+      : 'End with an "Original request" section quoting the original prompt verbatim.') +
+    ` Reply with only the prompt text, no preamble and no code fences.\n\n<project_context>\n${c.ctx}\n</project_context>\n<original_prompt>\n${c.original}\n</original_prompt>` +
+    (c.changes ? `\n<previous_draft>\n${c.draft}\n</previous_draft>\n<requested_changes>\n${c.changes}\n</requested_changes>` : '')
+  )
 }
 
 async function coachContext($: any): Promise<string> {
@@ -582,93 +572,77 @@ async function coachContext($: any): Promise<string> {
   }
 }
 
-// Ask the next question, or write the draft when the model is done or the cap is hit.
-async function coachAsk($: any, c: Coach) {
-  c.wantDraft = false
-  c.busy = 'Thinking…'
-  c.err = ''
-  redraw($)
-  const r = await $.model.complete({ model: await $.session.model(), prompt: coachQuestionPROMPT(c), maxTokens: 500, effort: 'low', timeoutMs: 45_000 })
-  if (coach !== c) return
-  const q = r.isAnswered ? coachParse(r.text) : undefined
-  if (q?.done && c.qa.length === 0 && !c.changes && c.fromSubmit) {
-    $.ui.toast('Prompt coach: Looks good')
-    return coachClose($, c.tipOnly ? undefined : c.original)
-  }
-  if (q?.done || (q && c.qa.length >= COACH_MAX)) return coachDraft($, c)
-  c.busy = ''
-  if (q) c.q = { question: q.question, options: q.options }
-  else c.err = `Could not get a question${r.isAnswered ? ' (unparseable reply)' : `: ${r.reason}`}`
-  redraw($)
-}
-
 async function coachDraft($: any, c: Coach) {
-  c.wantDraft = true
-  c.q = undefined
   c.busy = 'Writing your prompt…'
   c.err = ''
   redraw($)
+  if (!c.ctx) c.ctx = await coachContext($)
   const r = await $.model.complete({ model: await $.session.model(), prompt: coachDraftPROMPT(c), maxTokens: 2500, timeoutMs: 90_000 })
   if (coach !== c) return
   c.busy = ''
-  if (r.isAnswered && r.text.trim()) {
-    c.draft = r.text.trim()
+  const body = r.isAnswered ? r.text.trim() : ''
+  if (body) {
+    const cmd = coachCommandLine(c.original)
+    c.draft = cmd ? `${cmd}\n\n${body}` : body
     c.changes = undefined
     c.asking = false
   } else c.err = `Could not write the prompt${r.isAnswered ? '' : `: ${r.reason}`}`
   redraw($)
 }
 
-function coachAnswer($: any, c: Coach, a: string) {
-  if (!c.q) return
-  c.qa = [...c.qa, { q: c.q.question, options: c.q.options, a }]
-  c.q = undefined
-  return coachAsk($, c)
-}
-
-async function coachClose($: any, text: string | undefined) {
+// text: the original to send on (Dismiss), or nothing.
+async function coachClose($: any, text?: string) {
   coach = undefined
   await $.ui.close({ id: 'coach' })
   if (text) void $.prompt.submit({ text, asUser: true })
 }
 
-// Opens the pane and starts the interview; false when no surface draws a pane (the prompt then goes through unchanged).
+// Puts the improved prompt in the prompt box to edit; a held first prompt is not sent.
+async function coachUse($: any, c: Coach) {
+  const r = await $.prompt.fill({ text: c.draft })
+  $.ui.toast(r.isFilled ? 'Prompt coach: improved prompt is in the prompt box' : 'Prompt coach: could not fill the prompt box, use Copy')
+  if (r.isFilled) await coachClose($)
+}
+
+// Opens the pane and writes the draft; false when no surface draws a pane (the prompt then goes through unchanged).
 async function coachStart($: any, text: string, fromSubmit = false, tipOnly = false): Promise<boolean> {
-  const c: Coach = { fromSubmit, tipOnly, original: text, qa: [], ctx: '', asking: false, wantDraft: false, busy: 'Thinking…', err: '' }
+  const c: Coach = { fromSubmit, tipOnly, original: text, ctx: '', asking: false, busy: 'Writing your prompt…', err: '' }
   coach = c
   const r = await $.ui.open({ id: 'coach', title: 'Prompt coach', focus: true })
   if (!r.isPlaced) {
     coach = undefined
     return false
   }
-  void coachContext($).then(ctx => {
-    c.ctx = ctx
-    return coachAsk($, c)
-  })
+  void coachDraft($, c)
   return true
 }
 
 export async function promptCoachSessionStart($: any, e: any, next: any) {
-  await $.command.register({ name: 'sharpen', description: 'Interview you to turn a prompt into a better one: /sharpen <prompt>' })
+  await $.command.register({ name: 'sharpen', description: 'Rewrite a prompt so the main session grills you first: /sharpen [prompt] (defaults to the prompt box, then your last message)' })
   return next(e)
 }
 
 export async function promptCoachCommandRunSharpen($: any, e: any) {
-  const text = (e.args ?? '').trim()
+  let text = (e.args ?? '').trim()
+  if (!text) text = ((await $.prompt.read()).text ?? '').trim()
+  if (!text) {
+    const last = (await $.session.messages()).filter((m: any) => m.role === 'user' && (m.text ?? '').trim()).at(-1)
+    text = (last?.text ?? '').trim()
+  }
   if (!text) return { text: 'Usage: /sharpen <prompt>' }
   return { text: (await coachStart($, text)) ? 'Prompt coach opened.' : 'No pane available here.' }
 }
 
 export async function promptCoachPromptSubmit($: any, e: any, next: any) {
   const t = e.text.trim()
-  if (e.origin?.kind === 'plugin' || e.command || t.startsWith('/') || !t) return next(e)
+  if (e.origin?.kind === 'plugin' || e.command || !t) return next(e)
   const member = { ...coachedRef, id: await $.session.id() }
   if ((await $.state.get(member)).value) return next(e)
-  await $.state.set(member, true) // set on the first prompt whether or not a tip is shown
+  await $.state.set(member, true) // set on the first prompt whether or not it is coached: nothing later is auto-coached
   // Attachments can't be re-sent with a rewritten prompt, so such a prompt goes through as typed and the pane only offers the improved text.
   const tipOnly = !!e.attachments?.length
   if (!(await coachStart($, t, true, tipOnly)) || tipOnly) return next(e)
-  return { drop: 'prompt-coach: answer the interview, then pick Use or Dismiss.' }
+  return { drop: 'prompt-coach: review the improved prompt, then pick Use or Dismiss.' }
 }
 
 export function promptCoachUiRenderPaneCoach($: any, e: any) {
@@ -676,41 +650,13 @@ export function promptCoachUiRenderPaneCoach($: any, e: any) {
   const { Box, Text, Button, Input } = ui
   const c = coach
   if (!c) return <Text color={P.muted}>No prompt being coached.</Text>
-  const n = c.qa.length
-  const dismiss = <Button key="dismiss" label={c.tipOnly ? 'Dismiss' : 'Dismiss (send original)'} onPress={() => void coachClose($, c.tipOnly ? undefined : c.original)} />
+  const dismiss = <Button key="dismiss" label={c.tipOnly || !c.fromSubmit ? 'Dismiss' : 'Dismiss (send original)'} onPress={() => void coachClose($, c.tipOnly || !c.fromSubmit ? undefined : c.original)} />
   return (
     <Box flexDirection="column" gap={1}>
-      {paneHeader(ui, e, { title: 'Prompt coach', sub: c.draft ? 'Review your prompt' : c.busy || `Question ${n + 1} of ${COACH_MAX}`, pct: c.draft ? 100 : (n / COACH_MAX) * 100, tone: 'purple' })}
-      {c.tipOnly && <Text color={P.muted}>Your prompt and its attachments were already sent. Copy the improved version to use next time.</Text>}
+      {paneHeader(ui, e, { title: 'Prompt coach', sub: c.draft ? 'Review your prompt' : c.busy || 'Could not write the prompt', pct: c.draft ? 100 : 0, tone: 'purple' })}
+      {c.tipOnly && <Text color={P.muted}>Your prompt and its attachments were already sent. Use the improved version next time.</Text>}
       {c.err && textCard(ui, { key: 'err', color: P.err, text: c.err })}
       {c.busy && <Text color={P.muted}>{c.busy}</Text>}
-      {c.q && !c.busy && (
-        <>
-          {textCard(ui, { key: 'q', color: P.purple, text: c.q.question })}
-          <Box flexDirection="column" gap={1}>
-            {c.q.options.map((o, i) => (
-              <Button key={`o${i}`} label={o} variant={i === 0 ? 'primary' : 'secondary'} onPress={() => void coachAnswer($, c, o)} />
-            ))}
-          </Box>
-          <Input key="other" placeholder="Other: type your own answer" submitLabel="answer" onSubmit={(v: string) => v.trim() && void coachAnswer($, c, v.trim())} />
-          <Box flexDirection="row" gap={1}>
-            {n > 0 && (
-              <Button
-                key="back"
-                label="Back"
-                onPress={() => {
-                  const last = c.qa[n - 1]
-                  c.qa = c.qa.slice(0, -1)
-                  c.q = { question: last.q, options: last.options }
-                  redraw($)
-                }}
-              />
-            )}
-            <Button key="finish" label="Finish now" onPress={() => void coachDraft($, c)} />
-            {dismiss}
-          </Box>
-        </>
-      )}
       {c.draft && !c.busy && (
         <>
           {textCard(ui, { key: 'draft', color: P.accent, text: c.draft })}
@@ -728,16 +674,16 @@ export function promptCoachUiRenderPaneCoach($: any, e: any) {
             />
           )}
           <Box flexDirection="row" gap={1}>
-            {!c.tipOnly && <Button key="use" label="Use" variant="primary" onPress={() => void coachClose($, c.draft)} />}
+            <Button key="use" label="Use in prompt box" variant="primary" onPress={() => void coachUse($, c)} />
             <Button key="copy" label="Copy" onPress={async () => { $.ui.toast((await $.ui.copy({ text: c.draft, surface: e.surface })).isCopied ? 'Copied' : 'Copy failed') }} />
             <Button key="change" label="Request changes" onPress={() => { c.asking = !c.asking; redraw($) }} />
             {dismiss}
           </Box>
         </>
       )}
-      {c.err && !c.busy && !c.q && (
+      {c.err && !c.busy && (
         <Box flexDirection="row" gap={1}>
-          <Button key="retry" label="Retry" variant="primary" onPress={() => void (c.wantDraft ? coachDraft($, c) : coachAsk($, c))} />
+          <Button key="retry" label="Retry" variant="primary" onPress={() => void coachDraft($, c)} />
           {!c.draft && dismiss}
         </Box>
       )}
