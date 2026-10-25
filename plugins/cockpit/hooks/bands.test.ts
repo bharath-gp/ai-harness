@@ -37,7 +37,7 @@ test('filetree pane draws', async ($, on) => {
   for (const surface of ['terminal', 'desktop']) expect(JSON.stringify(await render($, surface, 'Pane', 'filetree'))).toContain('a.ts')
 })
 
-test('calm context shows one quiet line with a details toggle', async ($, on) => {
+test('calm context shows one summary line with an Open button', async ($, on) => {
   let usd = 1
   on('session.usage', () => ({ value: { context: { percent: 20, tokens: 40000, window: 200000 }, rateLimits: [], cost: { usd } } }) as never)
   on('clock.now', () => ({ value: 1_000_000 }) as never)
@@ -48,6 +48,6 @@ test('calm context shows one quiet line with a details toggle', async ($, on) =>
   await ($ as any).prompt.submit({ text: 'hi', wait: false, origin: { kind: 'composer' } })
   const out = JSON.stringify(await render($, 'terminal', 'AbovePrompt'))
   expect(out).toContain('Context 20%')
-  expect(out).toContain('Details')
+  expect(out).toContain('Open')
   expect(out).not.toContain('turn 1')
 })

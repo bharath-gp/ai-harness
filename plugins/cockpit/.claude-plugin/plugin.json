@@ -1,7 +1,7 @@
 {
   "name": "cockpit",
-  "version": "0.1.22",
-  "description": "Live panes and bands for session awareness. While all is calm, mods share one dim status line above the prompt (Details expands it into full cards with rings, bars and buttons); a mod draws its own band only when it needs attention. Seven mods, each toggled in the plugin config. agents-progress: running-subagents and todo bands above the prompt; /agents-info opens the full subagent panel. cache-keeper: cache countdown in the last 5 minutes or when cold, cold-send dialog (continue here or new session) with cost estimate; /keepwarm [90m|2h|off|status] pings to hold the cache, /cache-tax shows its state. context-health: context fill band with warnings, Handoff and Fresh buttons; /ctx-handoff writes .claude/handoff.md and continues in a clean context, /autohandoff [percent|off] does it automatically. usage-limits: always-on session (5h) and weekly (7d) limit bars with reset countdown, pace and a toast at 90%. filetree: /filetree opens a file tree with git status and highlights for files Claude reads, edits and commits. next-steps: three suggested next prompts after each turn; click one to fill the prompt. token-meter: the status line shows tokens used this session; Details shows input, output and cache tokens, the project's total across past sessions of this folder (click to rescan), session cost (last turn, per turn) and tokens per model.",
+  "version": "0.2.0",
+  "description": "Live session dashboard in one side pane, styled after claude-flightdeck: rounded role-coloured panels, ▰▱ gauges, animated connectors and live clocks. /cockpit [close|reset|layout auto|compact|wide|mini] opens it (docked beside the transcript in fullscreen, an 8-row summary inline otherwise, opens on start at 144+ columns); focus with ctrl+x tab for hotkeys. With the pane closed, calm mods share one summary line above the prompt with an Open button; a mod draws its own band only when it needs attention. Options: palette (theme|pastel), motion, layout, openOnStart, paneColumns, maxCards, architectPattern, matchDescriptions, moments, architectLabel, gateLabel. Twelve mods, each toggled in the plugin config. agents-progress: agents as cards or swimlanes with tokens, steps and clocks (1-6 expand, a finished), task progress; /agents-info opens the pane. cache-keeper: cache row with countdown, a band in the last 5 minutes or when cold, cold-send dialog (continue here or new session) with cost estimate; /keepwarm [90m|2h|off|status] pings to hold the cache (k), /cache-tax shows its state. context-health: context gauge with compactions, turn, speed and cost, a warning band with Handoff and Fresh; /ctx-handoff writes .claude/handoff.md and continues in a clean context, /autohandoff [percent|off] does it automatically. usage-limits: session (5h) and weekly (7d) limit gauges with reset countdown and pace, a band from 70% and a toast at 90%. filetree: /filetree opens a file tree with git status and highlights for files Claude reads, edits and commits. next-steps: three suggested next prompts after each turn; click one to fill the prompt. token-meter: tokens and cost this session; details (t) shows input, output and cache tokens, the project's total across past sessions of this folder (rescan), cost per turn and tokens per model. architect: consults with advisor-type agents or server tools on a timeline, their inferred moment and the advice. permission-gate: one cell per permission check (allowed, cleared, pending, denied) with file/shell/other drill-downs (f/s/o), credentials masked; observe only. loops: model loops no agent claims (workflow agents, compactions, forks). turn-receipt: the running turn's clock, or the last turn's duration, agents, edits, errors and cost. session-log: prompts, spawns, completions, consults, edits, errors and denials, filtered to the agent in view.",
   "userConfig": {
     "agentsProgress": {
       "type": "boolean",
@@ -44,6 +44,116 @@
       "title": "usage-limits",
       "description": "Always-visible band with session (5h) and weekly (7d) limit usage, reset countdown, pace and a toast at 90%",
       "default": true
+    },
+    "architect": {
+      "type": "boolean",
+      "title": "architect",
+      "description": "Architect panel: consults with advisor-type agents or server tools on a timeline, their inferred moment and advice",
+      "default": true
+    },
+    "permissionGate": {
+      "type": "boolean",
+      "title": "permission-gate",
+      "description": "Gate panel: one cell per permission check (allowed, cleared, pending, denied) with file/shell/other drill-downs",
+      "default": true
+    },
+    "loops": {
+      "type": "boolean",
+      "title": "loops",
+      "description": "Loops row: model loops no agent card claims (workflow agents, compactions, forks)",
+      "default": true
+    },
+    "turnReceipt": {
+      "type": "boolean",
+      "title": "turn-receipt",
+      "description": "Receipt panel: the running turn's clock, or the last turn's duration, agents, edits, errors and cost",
+      "default": true
+    },
+    "sessionLog": {
+      "type": "boolean",
+      "title": "session-log",
+      "description": "Session log panel: prompts, spawns, completions, consults, edits, errors and denials",
+      "default": true
+    },
+    "palette": {
+      "type": "string",
+      "title": "Palette",
+      "description": "theme follows your Claude Code theme (light, dark, colour-blind); pastel is fixed colours tuned for dark terminals",
+      "options": [
+        "theme",
+        "pastel"
+      ],
+      "default": "theme"
+    },
+    "motion": {
+      "type": "string",
+      "title": "Motion",
+      "description": "Animate the pane's connectors while real work flows, or keep them still",
+      "options": [
+        "while-active",
+        "off"
+      ],
+      "default": "while-active"
+    },
+    "layout": {
+      "type": "string",
+      "title": "Layout",
+      "description": "auto: an 8-row summary when the pane sits inline above the prompt, two columns from 110 columns when docked, one column otherwise",
+      "options": [
+        "auto",
+        "compact",
+        "wide",
+        "mini"
+      ],
+      "default": "auto"
+    },
+    "openOnStart": {
+      "type": "boolean",
+      "title": "Open on start",
+      "description": "Open the cockpit pane when a session starts (Claude Code seats it unasked only in terminals 144+ columns wide)",
+      "default": true
+    },
+    "paneColumns": {
+      "type": "number",
+      "title": "Pane width",
+      "description": "Columns the pane asks for when docked beside a fullscreen transcript, 40 or more; a width you dragged it to wins",
+      "default": 66
+    },
+    "maxCards": {
+      "type": "number",
+      "title": "Cards before swimlanes",
+      "description": "Agent cards drawn side by side; more agents than this switch to swimlanes (1-6)",
+      "default": 3
+    },
+    "architectPattern": {
+      "type": "string",
+      "title": "Architect pattern",
+      "description": "Regular expression (case-insensitive) for the agent types and server tools that count as the architect",
+      "default": "advisor|architect"
+    },
+    "matchDescriptions": {
+      "type": "boolean",
+      "title": "Match agent descriptions",
+      "description": "Also count an agent type as the architect when its description matches the pattern",
+      "default": false
+    },
+    "moments": {
+      "type": "boolean",
+      "title": "Architect moments",
+      "description": "Show the inferred moment of each consult (before a plan, error repeats, before done)",
+      "default": true
+    },
+    "architectLabel": {
+      "type": "string",
+      "title": "Architect label",
+      "description": "Name shown for the architect panel",
+      "default": "ARCHITECT"
+    },
+    "gateLabel": {
+      "type": "string",
+      "title": "Gate label",
+      "description": "Name shown for the permission panel",
+      "default": "GATE"
     }
   }
 }

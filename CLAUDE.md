@@ -5,6 +5,8 @@ Claude Code plugin marketplace (`.claude-plugin/marketplace.json`, name `ai-harn
 ## Rules for editing mods
 - Shared UI lives in `shared/`; after editing run `./scripts/sync-ui.sh` and commit the copies in each `plugins/*/hooks/`.
 - Every function that takes `$` must be declared in `register.tsx` itself: Claude Code older than 2.1.300 (the CLI bundled with the desktop app) refuses to follow `$` into an imported function, so the module does not load. Only `$`-free helpers (`ui.ts`, `band.tsx`, `kit.tsx`) are imported. Top-level names must be unique across a bundle's mod sections.
+- `rail.tsx` and `elapsed.tsx` are surface modules, drawn with `<ui.Client module="./rail.tsx" />`. The path must be a literal in `register.tsx`, so draw them there (`rail`, `liveClock`) and fall back to still text when `Client` is missing or `ui.fault` named the module.
+- The look follows claude-flightdeck: colours come from `C`/`P` in `ui.ts`, which are theme names swapped by `usePalette`, never hex. Never build colour tables at module load, because `usePalette` runs in `register`. AskUserQuestion trees take no width or height and at most 12 terminal rows, the dialog's own included.
 - A plugin may not register the same event+matcher twice: wire hooks in the bundle's `register.tsx`, one `on(...)` per event+matcher, chaining mods that share it and honouring `options.<mod> === false`.
 - Mod hooks and every helper that takes `$` are exported/plain `function` declarations (arrows fail validation). Add a new mod as a section of `register.tsx`, wire it there, and add a `userConfig` field.
 - Shared helpers take `ui = $.ui.resolve(e)` and `e`; callbacks that close over `$` are built in `register.tsx`.
