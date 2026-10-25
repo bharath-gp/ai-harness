@@ -1,5 +1,5 @@
 import type { Register } from 'claude-code'
-import { band, box, paneHeader } from './band'
+import { band, paneHeader } from './band'
 import { textCard } from './kit'
 import { C, P, type Tone, below, fmtSize, gauge, parsePorcelain, DECK, usePalette } from './ui'
 
@@ -100,22 +100,16 @@ const groups = (files: File[], project: string) => {
     .sort((a, b) => b.size - a.size)
 }
 
-// The dialog takes at most 12 rows on the terminal (48 elsewhere), the engine's own included, and no size or place:
-// the terminal card is three rows, the desktop's a box with up to two folders of five files; rows are flex, not sized.
-const drawCard = (ui: any, e: any, i: Impact) => {
+// The dialog takes at most 12 rows, the engine's own included (Claude Code 2.1.300 holds the desktop to 12 too),
+// and no size or place: so on every surface the card is flightdeck's borderless mini form, three flex rows. The
+// dialog's own question already names the command.
+const drawCard = (ui: any, i: Impact) => {
   const { Box, Text } = ui
-  const isTerminal = e.surface === 'terminal'
   const n = i.files.length
-  const g = groups(i.files, i.project)
-  const top = g.slice(0, 2).map(x => ({ ...x, files: x.files.slice(0, 5) }))
-  const shown = top.flatMap(x => x.files)
-  const hiddenFiles = n - shown.length
-  const hiddenSize = i.total - shown.reduce((a, f) => a + f.size, 0)
+  const big = groups(i.files, i.project)[0]
+  const folders = new Set(i.files.map(f => f.path.slice(0, f.path.lastIndexOf('/')))).size
   const act = i.verb === 'delete' ? 'will delete' : i.verb === 'discard' ? 'will discard' : `will ${i.verb}`
-  const meter = (size: number, color: string) => {
-    const g6 = gauge(i.total ? (size / i.total) * 100 : 0, 6)
-    return <Text><Text color={color}>{g6.on}</Text><Text color={C.faint}>{g6.off}</Text></Text>
-  }
+  const g6 = big ? gauge(i.total ? (big.size / i.total) * 100 : 0, 6) : null
   const row = (key: string, left: unknown, right: string, m: unknown) => (
     <Box key={key} flexDirection="row" columnGap={1}>
       <Box flexGrow={1} flexShrink={1}>{left}</Box>
@@ -123,36 +117,20 @@ const drawCard = (ui: any, e: any, i: Impact) => {
       {m ? <Box flexShrink={0}>{m}</Box> : null}
     </Box>
   )
-  // Terminal: flightdeck's borderless mini form, three rows; the dialog's own question already names the command.
-  if (isTerminal) {
-    const big = g[0]
-    return (
-      <Box flexDirection="column">
-        {row('t', <Text color={C.warn} bold wrap="truncate">{`BLAST RADIUS · ${act}`}</Text>, n > 0 ? `${plural(n, 'file')} · ${fmtSize(i.total)}` : `in ${i.project}`, null)}
-        <Text color={C.amber} wrap="truncate">{`⛨ ${i.note}`}</Text>
-        {big ? row('g', <Text wrap="truncate"><Text color={C.agent}>■ </Text><Text bold>{big.dir}</Text><Text dimColor>{` ${big.files[0].path.slice(big.files[0].path.lastIndexOf('/') + 1)}${g.length > 1 ? ` · +${plural(g.length - 1, 'folder')}` : ''}`}</Text></Text>, `${plural(big.files.length, 'file')} ${fmtSize(big.size)}`, meter(big.size, C.warn)) : null}
-      </Box>
-    )
-  }
-  return box(ui, {
-    color: C.warn,
-    title: 'BLAST RADIUS',
-    state: act,
-    right: n > 0 ? `${plural(n, 'file')} · ${fmtSize(i.total)}` : undefined,
-    children: (
-      <Box flexDirection="column">
-        {row('cmd', <Text bold wrap="truncate">{i.cmd}</Text>, `in ${i.project}`, null)}
-        <Text color={C.amber} wrap="wrap">{`⛨ ${i.note}`}</Text>
-        {top.map(grp => (
-          <Box key={grp.dir} flexDirection="column">
-            {row(`d:${grp.dir}`, <Text wrap="truncate"><Text color={C.agent}>■ </Text><Text bold>{grp.dir}</Text></Text>, `${plural(grp.files.length, 'file')} ${fmtSize(grp.size)}`, meter(grp.size, C.warn))}
-            {grp.files.map(f => row(`f:${f.path}`, <Text color={f.tracked ? undefined : C.amber} wrap="truncate">{`  · ${f.path.slice(f.path.lastIndexOf('/') + 1)}`}</Text>, fmtSize(f.size), meter(f.size, C.dim)))}
-          </Box>
-        ))}
-        {hiddenFiles > 0 ? <Text dimColor>{`+ ${plural(hiddenFiles, 'more file')} · ${fmtSize(Math.max(0, hiddenSize))}`}</Text> : null}
-      </Box>
-    ),
-  })
+  return (
+    <Box flexDirection="column">
+      {row('t', <Text color={C.warn} bold wrap="truncate">{`BLAST RADIUS · ${act}`}</Text>, n > 0 ? `${plural(n, 'file')} · ${fmtSize(i.total)}` : `in ${i.project}`, null)}
+      <Text color={C.amber} wrap="truncate">{`⛨ ${i.note}`}</Text>
+      {big && g6
+        ? row(
+            'g',
+            <Text wrap="truncate"><Text color={C.agent}>■ </Text><Text bold>{big.dir}</Text><Text dimColor>{` ${big.files[0].path.slice(big.files[0].path.lastIndexOf('/') + 1)}${folders > 1 ? ` · +${plural(folders - 1, 'folder')}` : ''}`}</Text></Text>,
+            `${plural(big.files.length, 'file')} ${fmtSize(big.size)}`,
+            <Text><Text color={C.warn}>{g6.on}</Text><Text color={C.faint}>{g6.off}</Text></Text>,
+          )
+        : null}
+    </Box>
+  )
 }
 
 export const blastRadius: Register = on => {
@@ -181,8 +159,8 @@ export const blastRadius: Register = on => {
 if (!pending || q?.header !== 'Blast Radius') return next(e)
     const { Box } = $.ui.resolve(e)
     return (
-      <Box flexDirection="column" gap={1}>
-        {drawCard($.ui.resolve(e), e, pending)}
+      <Box flexDirection="column">
+        {drawCard($.ui.resolve(e), pending)}
         {await next(e)}
       </Box>
     )
