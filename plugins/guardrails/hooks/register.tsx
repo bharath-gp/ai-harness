@@ -1,7 +1,20 @@
 import type { Register } from 'claude-code'
-import { band, paneHeader } from './band'
-import { folderIcon, iconTile, textCard } from './kit'
-import { P, type Tone, bar, below, fit, fmtSize, isRich, parsePorcelain, svg } from './ui'
+import { band, box, paneHeader } from './band'
+import { textCard } from './kit'
+import { C, P, type Tone, below, fmtSize, gauge, parsePorcelain, DECK, usePalette } from './ui'
+
+// ===== shared drawing =====
+// After a surface module faults on a surface, it is drawn there without animation; other surfaces keep theirs.
+const faulted = new Set<string>()
+
+// A rail that carries packets while `active` (claude-flightdeck's connector), a still faint line otherwise or where the
+// surface cannot run a surface module. The module path must be a literal in this file.
+export function rail(ui: any, e: any, key: string, active: boolean, color: string, width: number) {
+  const { Text } = ui
+  if (!DECK.motion || !('Client' in ui) || faulted.has(`${e.surface}:rail.tsx`))
+    return <Text color={C.faint} mono>{'─'.repeat(Math.max(1, width))}</Text>
+  return <ui.Client key={key} module="./rail.tsx" width={width} height={1} props={{ active, width, color, dim: C.faint, marks: [], isMerge: false }} />
+}
 
 // ===== blast-radius =====
 // Destructive shell patterns worth a human look: [pattern, what it does].
@@ -87,63 +100,59 @@ const groups = (files: File[], project: string) => {
     .sort((a, b) => b.size - a.size)
 }
 
+// The dialog takes at most 12 rows on the terminal (48 elsewhere), the engine's own included, and no size or place:
+// the terminal card is three rows, the desktop's a box with up to two folders of five files; rows are flex, not sized.
 const drawCard = (ui: any, e: any, i: Impact) => {
   const { Box, Text } = ui
-  const rich = isRich(ui, e)
+  const isTerminal = e.surface === 'terminal'
   const n = i.files.length
   const g = groups(i.files, i.project)
-  const top = g.slice(0, 2)
-  const shownFiles = top.reduce((c, x) => c + Math.min(5, x.files.length), 0)
-  const hiddenFiles = n - shownFiles
-  const hiddenSize = i.total - top.reduce((s, x) => s + x.files.slice(0, 5).reduce((a, f) => a + f.size, 0), 0)
-  const W = 90
-  const meter = (pct: number) => (rich ? <ui.Svg source={svg(W, 8, bar(0, 1, W, 6, pct, '#9aa0aa'))} alt="" width={W} height={8} /> : <Text color={P.muted}>{'▰'.repeat(Math.max(1, Math.round(pct / 10)))}</Text>)
+  const top = g.slice(0, 2).map(x => ({ ...x, files: x.files.slice(0, 5) }))
+  const shown = top.flatMap(x => x.files)
+  const hiddenFiles = n - shown.length
+  const hiddenSize = i.total - shown.reduce((a, f) => a + f.size, 0)
   const act = i.verb === 'delete' ? 'will delete' : i.verb === 'discard' ? 'will discard' : `will ${i.verb}`
-
-  return (
-    <Box flexDirection="column" borderStyle="round" borderColor="#4a3030" paddingX={2} paddingY={1} gap={1}>
-      <Box flexDirection="row" gap={2} alignItems="center">
-        {iconTile(ui, e, i.verb === 'delete' ? '🗑' : '⚠', P.err, 52)}
-        <Box flexDirection="column">
-          <Box flexDirection="row" gap={1} flexWrap="wrap">
-            <Text bold>{i.cmd.length > 60 ? `${i.cmd.slice(0, 59)}…` : i.cmd}</Text>
-            <Text color={P.muted}>{act}</Text>
-            {n > 0 ? (
-              <Box borderStyle="round" borderColor="#f97316" paddingX={1}>
-                <Text bold color="#fb923c">{`${plural(n, 'file')} · ${fmtSize(i.total)}`}</Text>
-              </Box>
-            ) : null}
-          </Box>
-          <Text color={P.muted}>{`in ${i.project}`}</Text>
-        </Box>
-      </Box>
-      <Box flexDirection="row" gap={1} borderStyle="round" borderColor="#6a3a3a" backgroundColor="#33201f" paddingX={1}>
-        <Text color="#f0a0a0">{`⛨ ${i.note}`}</Text>
-      </Box>
-      {top.map(grp => (
-        <Box key={grp.dir} flexDirection="column">
-          <Box flexDirection="row" gap={1} alignItems="center">
-            {folderIcon(ui, e, '#9aa0aa')}
-            <Text bold>{grp.dir}</Text>
-            <Box flexGrow={1} />
-            <Text color={P.muted}>{plural(grp.files.length, 'file')}</Text>
-            <Text bold>{fmtSize(grp.size)}</Text>
-            {meter(i.total ? (grp.size / i.total) * 100 : 0)}
-          </Box>
-          {grp.files.slice(0, 5).map(f => (
-            <Box key={f.path} flexDirection="row" gap={1} paddingLeft={3} alignItems="center">
-              <Text color={P.muted}>▫</Text>
-              <Text backgroundColor="#5a3a1a" color="#f3d2b0">{` ${f.path.slice(f.path.lastIndexOf('/') + 1)} `}</Text>
-              <Box flexGrow={1} />
-              <Text color={P.muted}>{fmtSize(f.size)}</Text>
-              {meter(i.total ? (f.size / i.total) * 100 : 0)}
-            </Box>
-          ))}
-        </Box>
-      ))}
-      {hiddenFiles > 0 ? <Text color={P.muted}>{`+ ${plural(hiddenFiles, 'more file')} · ${fmtSize(Math.max(0, hiddenSize))}`}</Text> : null}
+  const meter = (size: number, color: string) => {
+    const g6 = gauge(i.total ? (size / i.total) * 100 : 0, 6)
+    return <Text><Text color={color}>{g6.on}</Text><Text color={C.faint}>{g6.off}</Text></Text>
+  }
+  const row = (key: string, left: unknown, right: string, m: unknown) => (
+    <Box key={key} flexDirection="row" columnGap={1}>
+      <Box flexGrow={1} flexShrink={1}>{left}</Box>
+      <Box flexShrink={0}><Text dimColor>{right}</Text></Box>
+      {m ? <Box flexShrink={0}>{m}</Box> : null}
     </Box>
   )
+  // Terminal: flightdeck's borderless mini form, three rows; the dialog's own question already names the command.
+  if (isTerminal) {
+    const big = g[0]
+    return (
+      <Box flexDirection="column">
+        {row('t', <Text color={C.warn} bold wrap="truncate">{`BLAST RADIUS · ${act}`}</Text>, n > 0 ? `${plural(n, 'file')} · ${fmtSize(i.total)}` : `in ${i.project}`, null)}
+        <Text color={C.amber} wrap="truncate">{`⛨ ${i.note}`}</Text>
+        {big ? row('g', <Text wrap="truncate"><Text color={C.agent}>■ </Text><Text bold>{big.dir}</Text><Text dimColor>{` ${big.files[0].path.slice(big.files[0].path.lastIndexOf('/') + 1)}${g.length > 1 ? ` · +${plural(g.length - 1, 'folder')}` : ''}`}</Text></Text>, `${plural(big.files.length, 'file')} ${fmtSize(big.size)}`, meter(big.size, C.warn)) : null}
+      </Box>
+    )
+  }
+  return box(ui, {
+    color: C.warn,
+    title: 'BLAST RADIUS',
+    state: act,
+    right: n > 0 ? `${plural(n, 'file')} · ${fmtSize(i.total)}` : undefined,
+    children: (
+      <Box flexDirection="column">
+        {row('cmd', <Text bold wrap="truncate">{i.cmd}</Text>, `in ${i.project}`, null)}
+        <Text color={C.amber} wrap="wrap">{`⛨ ${i.note}`}</Text>
+        {top.map(grp => (
+          <Box key={grp.dir} flexDirection="column">
+            {row(`d:${grp.dir}`, <Text wrap="truncate"><Text color={C.agent}>■ </Text><Text bold>{grp.dir}</Text></Text>, `${plural(grp.files.length, 'file')} ${fmtSize(grp.size)}`, meter(grp.size, C.warn))}
+            {grp.files.map(f => row(`f:${f.path}`, <Text color={f.tracked ? undefined : C.amber} wrap="truncate">{`  · ${f.path.slice(f.path.lastIndexOf('/') + 1)}`}</Text>, fmtSize(f.size), meter(f.size, C.dim)))}
+          </Box>
+        ))}
+        {hiddenFiles > 0 ? <Text dimColor>{`+ ${plural(hiddenFiles, 'more file')} · ${fmtSize(Math.max(0, hiddenSize))}`}</Text> : null}
+      </Box>
+    ),
+  })
 }
 
 export const blastRadius: Register = on => {
@@ -169,7 +178,7 @@ export const blastRadius: Register = on => {
   // The impact card goes above the engine's own dialog, which keeps its Delete / Cancel buttons.
   on('ui.render', { component: 'AskUserQuestion' }, async ($, e, next) => {
     const q = (e.props.questions as { header?: string }[] | undefined)?.[0]
-    if (!pending || q?.header !== 'Blast Radius') return next(e)
+if (!pending || q?.header !== 'Blast Radius') return next(e)
     const { Box } = $.ui.resolve(e)
     return (
       <Box flexDirection="column" gap={1}>
@@ -203,7 +212,7 @@ function guard($: any, path: string, text: string) {
   const kind = scan(text)
   if (!kind) return undefined
   blocked += 1
-  $.ui.status(`🛡 Secret Sentry · ${blocked} blocked`)
+  $.ui.status(`secret-sentry · ${blocked} blocked`)
   $.ui.toast(`Secret Sentry blocked a ${kind} in ${path.split('/').pop()}`)
   return { deny: `${$.plugin.name}: refused to write a ${kind} into ${path}. Read it from an env var instead.` }
 }
@@ -394,15 +403,19 @@ export function assumptionTrackerUiRenderPaneAssumptions($: any, e: any) {
   return (
     <Box flexDirection="column" gap={1}>
       {paneHeader(ui, e, { title: 'Assumptions', sub: `${reviewed}/${items.length} reviewed · ${wrong.length} wrong`, pct: items.length ? (reviewed / items.length) * 100 : 0, tone: 'warn' })}
-      {items.length === 0 && <Text color="#8b8f98">Nothing to review.</Text>}
+      {items.length === 0 && <Text dimColor>Nothing to review.</Text>}
+      {items.length > 0 && <Text dimColor>{`1-${items.length} cycle right / wrong${wrong.length ? ' · f send the fixes' : ''}`}</Text>}
       {items.map((it, i) => {
-        const color = it.verdict === 'wrong' ? P.err : it.verdict === 'right' ? P.ok : P.warn // yellow until reviewed
+        const color = it.verdict === 'wrong' ? P.err : it.verdict === 'right' ? P.ok : P.warn // amber until reviewed
+        const mark = it.verdict === 'wrong' ? '✗ wrong' : it.verdict === 'right' ? '✓ right' : '◇ unreviewed'
         return textCard(ui, {
           key: `r${i}`,
           color,
           text: it.text,
           children: (
-            <Box flexDirection="row" gap={1}>
+            <Box flexDirection="row" columnGap={1}>
+              <Button key={`cy${i}`} plain hotkey={String(i + 1)} label={`${i + 1} ${mark}`} onPress={() => set(i, it.verdict === undefined ? 'right' : it.verdict === 'right' ? 'wrong' : undefined)} />
+              <Box flexGrow={1} />
               <Button key={`ok${i}`} label="Right" variant={it.verdict === 'right' ? 'primary' : 'secondary'} onPress={() => set(i, 'right')} />
               <Button key={`no${i}`} label="Wrong" variant={it.verdict === 'wrong' ? 'primary' : 'secondary'} onPress={() => set(i, 'wrong')} />
             </Box>
@@ -413,6 +426,7 @@ export function assumptionTrackerUiRenderPaneAssumptions($: any, e: any) {
         <Button
           key="send"
           variant="primary"
+          hotkey="f"
           label={`Fix ${wrong.length} wrong`}
           onPress={async () => {
             const keep = items.filter(i => i.verdict === 'right').map(i => `- ${i.text}`)
@@ -507,10 +521,11 @@ export function selfCritiqueUiRenderPaneCritique($: any, e: any) {
   return (
     <Box flexDirection="column" gap={1}>
       {paneHeader(ui, e, { title: 'Critique', sub: status || `${result?.flaws.length ?? 0} flaws · model: ${model}`, pct: score, tone: result ? tone : 'purple' })}
-      <Box flexDirection="row" gap={1}>
-        <Button key="rerun" label="Rerun" variant="primary" onPress={() => void run($, lastAnswer)} />
-        <Button key="auto" label={`Auto ${auto ? 'on' : 'off'}`} onPress={() => { auto = !auto; $.ui.invalidate('ui.render') }} />
-        <Button key="model" label={`Model: ${model}`} onPress={() => { model = MODELS[(MODELS.indexOf(model) + 1) % MODELS.length]; $.ui.invalidate('ui.render') }} />
+      {rail(ui, e, 'critique-busy', status === 'Critiquing…', C.arch, Math.max(10, (e.props.bodyColumns ?? 40) - 1))}
+      <Box flexDirection="row" columnGap={1} flexWrap="wrap">
+        <Button key="rerun" label="Rerun" hotkey="r" variant="primary" onPress={() => void run($, lastAnswer)} />
+        <Button key="auto" label={`Auto ${auto ? 'on' : 'off'}`} hotkey="a" onPress={() => { auto = !auto; $.ui.invalidate('ui.render') }} />
+        <Button key="model" label={`Model: ${model}`} hotkey="m" onPress={() => { model = MODELS[(MODELS.indexOf(model) + 1) % MODELS.length]; $.ui.invalidate('ui.render') }} />
       </Box>
       {result && (
         <>
@@ -519,7 +534,7 @@ export function selfCritiqueUiRenderPaneCritique($: any, e: any) {
           {result.flaws.map((f, i) => (
             <Box key={`f${i}`} flexDirection="column">
               {textCard(ui, { key: `fc${i}`, color: P.err, text: f.issue, sub: `fix: ${f.fix}` })}
-              <Button key={`fix${i}`} label="Make this fix" onPress={() => void $.prompt.submit({ text: `Fix this issue in your last answer: ${f.issue}. ${f.fix}` })} />
+              <Button key={`fix${i}`} label={`${i + 1} Make this fix`} hotkey={String(i + 1)} onPress={() => void $.prompt.submit({ text: `Fix this issue in your last answer: ${f.issue}. ${f.fix}` })} />
             </Box>
           ))}
         </>
@@ -649,17 +664,18 @@ export function promptCoachUiRenderPaneCoach($: any, e: any) {
   const ui = $.ui.resolve(e)
   const { Box, Text, Button, Input } = ui
   const c = coach
-  if (!c) return <Text color={P.muted}>No prompt being coached.</Text>
-  const dismiss = <Button key="dismiss" label={c.tipOnly || !c.fromSubmit ? 'Dismiss' : 'Dismiss (send original)'} onPress={() => void coachClose($, c.tipOnly || !c.fromSubmit ? undefined : c.original)} />
+  if (!c) return <Text dimColor>No prompt being coached.</Text>
+  const dismiss = <Button key="dismiss" hotkey="d" label={c.tipOnly || !c.fromSubmit ? 'Dismiss' : 'Dismiss (send original)'} onPress={() => void coachClose($, c.tipOnly || !c.fromSubmit ? undefined : c.original)} />
   return (
     <Box flexDirection="column" gap={1}>
       {paneHeader(ui, e, { title: 'Prompt coach', sub: c.draft ? 'Review your prompt' : c.busy || 'Could not write the prompt', pct: c.draft ? 100 : 0, tone: 'purple' })}
-      {c.tipOnly && <Text color={P.muted}>Your prompt and its attachments were already sent. Use the improved version next time.</Text>}
+      {c.tipOnly && <Text dimColor>Your prompt and its attachments were already sent. Use the improved version next time.</Text>}
       {c.err && textCard(ui, { key: 'err', color: P.err, text: c.err })}
-      {c.busy && <Text color={P.muted}>{c.busy}</Text>}
+      {rail(ui, e, 'coach-busy', Boolean(c.busy), C.arch, Math.max(10, (e.props.bodyColumns ?? 40) - 1))}
+      {c.busy && <Text dimColor>{c.busy}</Text>}
       {c.draft && !c.busy && (
         <>
-          {textCard(ui, { key: 'draft', color: P.accent, text: c.draft })}
+          {textCard(ui, { key: 'draft', color: C.main, text: c.draft })}
           {c.asking && (
             <Input
               key="changes"
@@ -673,17 +689,17 @@ export function promptCoachUiRenderPaneCoach($: any, e: any) {
               }}
             />
           )}
-          <Box flexDirection="row" gap={1}>
-            <Button key="use" label="Use in prompt box" variant="primary" onPress={() => void coachUse($, c)} />
-            <Button key="copy" label="Copy" onPress={async () => { $.ui.toast((await $.ui.copy({ text: c.draft, surface: e.surface })).isCopied ? 'Copied' : 'Copy failed') }} />
-            <Button key="change" label="Request changes" onPress={() => { c.asking = !c.asking; redraw($) }} />
+          <Box flexDirection="row" columnGap={1} flexWrap="wrap">
+            <Button key="use" label="Use in prompt box" hotkey="u" variant="primary" onPress={() => void coachUse($, c)} />
+            <Button key="copy" label="Copy" hotkey="c" onPress={async () => { $.ui.toast((await $.ui.copy({ text: c.draft, surface: e.surface })).isCopied ? 'Copied' : 'Copy failed') }} />
+            <Button key="change" label="Request changes" hotkey="e" onPress={() => { c.asking = !c.asking; redraw($) }} />
             {dismiss}
           </Box>
         </>
       )}
       {c.err && !c.busy && (
-        <Box flexDirection="row" gap={1}>
-          <Button key="retry" label="Retry" variant="primary" onPress={() => void coachDraft($, c)} />
+        <Box flexDirection="row" columnGap={1}>
+          <Button key="retry" label="Retry" hotkey="r" variant="primary" onPress={() => void coachDraft($, c)} />
           {!c.draft && dismiss}
         </Box>
       )}
@@ -693,6 +709,16 @@ export function promptCoachUiRenderPaneCoach($: any, e: any) {
 
 // Each mod is on unless its userConfig flag is false (toggle in the config menu; the module reloads).
 export const register: Register = (on, options) => {
+  usePalette(options.palette, options.motion)
+  on('ui.fault', ($, e, next) => {
+    const key = `${e.surface}:${e.module.split(/[\\/]/).pop()}`
+    if (!faulted.has(key)) {
+      faulted.add(key)
+      $.ui.log(`guardrails: ${e.module} faulted on ${e.surface} (${e.phase}: ${e.reason}); drawing it without animation`)
+      $.ui.invalidate('ui.render')
+    }
+    return next(e)
+  })
   if (options.blastRadius !== false) blastRadius(on)
   if (options.secretSentry !== false) secretSentry(on)
   on('session.start', ($, e, next) => {
