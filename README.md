@@ -23,6 +23,7 @@ The other two plugins are bundles of mods. Every mod is on by default; turn indi
 | | `assumption-tracker` | Lists the assumptions Claude made and sends fixes for the ones you mark wrong |
 | | `self-critique` | /critique panel that reviews Claude's last answer, with one-click fixes |
 | | `prompt-coach` | On the first prompt of a session only, rewrites it into a better prompt that makes Claude grill you about the open questions first; `/sharpen` on demand |
+| | `merge-sweep` | When a PR you opened in the session is merged, offers to remove its worktree, local branch and remote branch (never forces, keeps anything unsafe) |
 | `cockpit` | `agents-progress` | One panel in the cockpit pane: main-session activity and task progress, agents as cards or swimlanes with their current tool, and background shells, monitors and wakeups |
 | | `cache-keeper` | Cache countdown in the pane (a band in the last 5 minutes or when cold), /keepwarm pings and a cold-send dialog with cost estimate |
 | | `context-health` | Context gauge with compactions and a warning band, /ctx-handoff and /autohandoff |

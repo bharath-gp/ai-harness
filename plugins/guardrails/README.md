@@ -1,13 +1,13 @@
 # guardrails
 
-Safety and review of Claude's output. Six mods that stop damage before it happens, catch leaks, learn your preferences, and make Claude's answers easy to audit. Needs Claude Code 2.1.287+.
+Safety and review of Claude's output. Seven mods that stop damage before it happens, catch leaks, learn your preferences, and make Claude's answers easy to audit. Needs Claude Code 2.1.287+.
 
 ```
 /plugin marketplace add bharath-gp/ai-harness
 /plugin install guardrails@ai-harness
 ```
 
-Every mod is on by default. Turn one off in the plugin config menu (boolean fields `blastRadius`, `secretSentry`, `reflect`, `assumptionTracker`, `selfCritique`, `promptCoach`); the plugin reloads. Mods are not sandboxed: read `hooks/register.tsx` first.
+Every mod is on by default. Turn one off in the plugin config menu (boolean fields `blastRadius`, `secretSentry`, `reflect`, `assumptionTracker`, `selfCritique`, `promptCoach`, `mergeSweep`); the plugin reloads. Mods are not sandboxed: read `hooks/register.tsx` first.
 
 The look follows [claude-flightdeck](https://github.com/scasella/claude-flightdeck), as `cockpit` does: mono text in rounded boxes, each coloured by its role, with `TITLE · state` headers, `▰▱` gauges and a rail that animates while a critique or rewrite runs. Every button also has a hotkey once its pane is focused (ctrl+x tab). Two options: `palette` (`theme` follows your Claude Code theme, `pastel` uses fixed colours for dark terminals) and `motion` (`off` keeps the rails still).
 
@@ -19,6 +19,7 @@ The look follows [claude-flightdeck](https://github.com/scasella/claude-flightde
 | [assumption-tracker](#assumption-tracker) | end of each turn | `/assumptions` |
 | [self-critique](#self-critique) | on demand, or each turn | `/critique` |
 | [prompt-coach](#prompt-coach) | first prompt of a session | `/sharpen` |
+| [merge-sweep](#merge-sweep) | `gh pr create` in `Bash`, then end of each turn | none |
 
 ## blast-radius
 
@@ -79,6 +80,23 @@ Rewrites your first prompt so the main session grills you before it starts.
 **Commands:** `/sharpen [prompt]` coaches any prompt at any time, whatever the flag says. With no text it uses the current prompt input, then your last message.
 
 **Context:** the coach sees your prompt, `CLAUDE.md` and the top-level file names only. It asks you nothing itself.
+
+## merge-sweep
+
+Offers to clean up branches and worktrees once a PR you opened in this session is merged.
+
+**Use:** when a `Bash` call runs `gh pr create` and succeeds, the PR URL is saved in `$.state` for the session. After each turn the mod runs `gh pr view <url>` for each saved PR (a failed call, for example offline, is retried next turn). When one is `MERGED` a band appears above the prompt: `Clean up` (`c`) or `Dismiss` (`d`). Either one removes the PR from the list, so it is not offered again.
+
+**Clean up** works on the PR's head branch only and never forces:
+- If the branch is checked out in the main checkout, it runs `git switch <base>` first. The base branch is then pulled with `git pull --ff-only` whenever the main checkout is on it.
+- A linked worktree on the branch is removed with `git worktree remove` (no `--force`).
+- The local branch is deleted with `git branch -D` only when its tip equals the PR's `headRefOid`, so squash and rebase merges work and later local commits are never lost.
+- The remote branch is deleted from `origin` only when it still points at `headRefOid`, and never for a PR from a fork.
+- Anything git refuses, a branch with later commits, a worktree you are standing in (with the command to run later) or a failed switch or pull is kept and listed in a toast.
+
+**Shares the `Bash` hook with blast-radius:** the bundle registers one `Bash` hook that chains both; `mergeSweep: false` turns this mod off without touching blast-radius.
+
+**Context:** needs `gh` signed in and `git`. The remote is assumed to be `origin`.
 
 ## Develop
 

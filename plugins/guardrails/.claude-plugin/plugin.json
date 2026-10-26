@@ -1,8 +1,8 @@
 {
   "name": "guardrails",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "types": "./types/index.d.ts",
-  "description": "Safety and review of Claude's output, styled after claude-flightdeck (rounded role-coloured boxes, ▰▱ gauges, busy rails; every button also has a hotkey; options palette theme|pastel and motion). Six mods, each toggled in the plugin config. blast-radius: holds destructive shell commands (rm -rf, git push --force, git reset --hard, DROP TABLE...) behind a three-row BLAST RADIUS card showing the files at risk; pick Proceed or Cancel. secret-sentry: denies Write/Edit/NotebookEdit that would put API keys, tokens or private keys in a file (.env and *.example exempt). reflect: spots lasting corrections in your prompts (or 'remember: ...') and offers to save them to ./CLAUDE.md or ~/.claude/CLAUDE.md; /reflect-queue, /reflect-pause. assumption-tracker: after each turn lists what Claude assumed; mark Right or Wrong (or 1-8 to cycle) and send a fix for the wrong ones (f); /assumptions. self-critique: /critique [auto|opus|sonnet|haiku] reviews Claude's last answer with a verdict, flaws and a Make this fix button (r rerun, a auto, m model, 1-n fix). prompt-coach: on the first prompt of a session only (a first /command or skill prompt included; tracked per session id so a reload cannot re-fire it) it holds the prompt and shows one improved prompt in a side pane, with instructions telling the main session to grill you about ambiguities and unclear requirements before it starts; Use in prompt box (u, to edit before sending), Copy (c), Request changes (e) or Dismiss (d, sends the original); a first /command keeps its line verbatim at the top; a first prompt with attachments is sent as typed and the improved text is only offered; never auto-triggers again after the first prompt; /sharpen [prompt] runs it any time (typed text, else the prompt box, else your last message).",
+  "description": "Safety and review of Claude's output, styled after claude-flightdeck (rounded role-coloured boxes, ▰▱ gauges, busy rails; every button also has a hotkey; options palette theme|pastel and motion). Seven mods, each toggled in the plugin config. blast-radius: holds destructive shell commands (rm -rf, git push --force, git reset --hard, DROP TABLE...) behind a three-row BLAST RADIUS card showing the files at risk; pick Proceed or Cancel. secret-sentry: denies Write/Edit/NotebookEdit that would put API keys, tokens or private keys in a file (.env and *.example exempt). reflect: spots lasting corrections in your prompts (or 'remember: ...') and offers to save them to ./CLAUDE.md or ~/.claude/CLAUDE.md; /reflect-queue, /reflect-pause. assumption-tracker: after each turn lists what Claude assumed; mark Right or Wrong (or 1-8 to cycle) and send a fix for the wrong ones (f); /assumptions. self-critique: /critique [auto|opus|sonnet|haiku] reviews Claude's last answer with a verdict, flaws and a Make this fix button (r rerun, a auto, m model, 1-n fix). prompt-coach: on the first prompt of a session only (a first /command or skill prompt included; tracked per session id so a reload cannot re-fire it) it holds the prompt and shows one improved prompt in a side pane, with instructions telling the main session to grill you about ambiguities and unclear requirements before it starts; Use in prompt box (u, to edit before sending), Copy (c), Request changes (e) or Dismiss (d, sends the original); a first /command keeps its line verbatim at the top; a first prompt with attachments is sent as typed and the improved text is only offered; never auto-triggers again after the first prompt; /sharpen [prompt] runs it any time (typed text, else the prompt box, else your last message). merge-sweep: remembers PRs this session opened with `gh pr create` and checks them with `gh pr view` after each turn; once one is merged a band offers Clean up (c) or Dismiss (d). Clean up switches the main checkout to the base branch and pulls it if the PR's branch is checked out there, removes the PR branch's worktree, deletes the local branch only if its tip is the merged head commit, and deletes the remote head branch only if it still is that commit (never a fork PR's); it never forces, keeps anything git refuses or that has later commits (and the worktree you are standing in) and reports what was kept in a toast.",
   "userConfig": {
     "blastRadius": {
       "type": "boolean",
@@ -59,6 +59,12 @@
         "off"
       ],
       "default": "while-active"
+    },
+    "mergeSweep": {
+      "type": "boolean",
+      "title": "merge-sweep",
+      "description": "Offers to clean up branches and worktrees once a PR created in the session is merged",
+      "default": true
     }
   }
 }
