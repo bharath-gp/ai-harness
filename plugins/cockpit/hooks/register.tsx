@@ -99,6 +99,8 @@ export async function cockpitCommandRun($: any, e: any) {
 function cockpitReset() {
   agents = []
   subTools = 0
+  bgTasks = []
+  mainTool = ''
   archConsults = []
   archIds = []
   archAdvice = ''
@@ -214,6 +216,7 @@ function cockpitMini($: any, ui: any, e: any, W: number, now: number, options: a
         ...(on('usageLimits') ? usageLimitRates.map((r, i): Piece => ({ key: `u${i}`, spans: [{ text: `${i ? '· ' : ''}${LIMIT_SHORT[r.kind]} ${Math.round(r.percentUsed)}%`, color: r.percentUsed >= 70 ? P[zoneTone(r.percentUsed, 70, 90)] : undefined, dim: r.percentUsed < 70 }] })) : []),
         on('cacheKeeper') && lastTouch ? { spans: [{ text: `· cache ${TTL - (now - lastTouch) > 0 ? mins(TTL - (now - lastTouch)) : 'cold'}`, dim: true }] } : null,
         on('agentsProgress') && todos.length ? { spans: [{ text: `· tasks ${todos.filter(t => t.status === 'completed').length}/${todos.length}`, dim: true }] } : null,
+        on('agentsProgress') && bgLive(now).length ? { spans: [{ text: `· bg ${bgLive(now).length}`, dim: true }] } : null,
       ], W)}
       {on('permissionGate') && s.total > 0 ? (
         <Box columnGap={1}>
@@ -248,13 +251,13 @@ export async function cockpitUiRenderPane($: any, e: any, options: any) {
   const isWide = layout === 'wide' || (layout === 'auto' && W >= 110)
   const colW = isWide ? Math.floor((W - 2) / 2) : W
   const showArch = on('architect') && archShown()
-  // A panel with nothing to show yet takes no room: most sessions never spawn an agent.
+  // A panel with nothing to show yet takes no room; the agents panel always shows, its main row runs every turn.
   type Panel = { id: string; draw: (w: number) => unknown; flow?: { active: boolean; color: string } }
   const panels: Panel[] = [
     { id: 'main', draw: w => cockpitMainPanel($, ui, e, w, now, options) },
     ...(showArch ? [{ id: 'architect', draw: (w: number) => architectPanel(ui, w, now), flow: { active: archAdvising(), color: C.arch } }] : []),
     ...(on('permissionGate') && gateRecent.length ? [{ id: 'gate', draw: (w: number) => gatePanel($, ui, e, w), flow: { active: deckRunning, color: C.gate } }] : []),
-    ...(on('agentsProgress') && (agents.length || todos.length) ? [{ id: 'agents', draw: (w: number) => agentsProgressPanel($, ui, e, w, now) }] : []),
+    ...(on('agentsProgress') ? [{ id: 'agents', draw: (w: number) => agentsProgressPanel($, ui, e, w, now) }] : []),
     ...(on('loops') && loopsList.length ? [{ id: 'loops', draw: (w: number) => loopsPanel(ui, e, w, now) }] : []),
     ...(on('turnReceipt') && (deckRunning || receiptLast) ? [{ id: 'receipt', draw: (w: number) => receiptPanel(ui, e, w, now), flow: { active: deckRunning, color: C.main } }] : []),
   ]
@@ -316,7 +319,11 @@ type Agent = {
   lastStop?: string | null
   tools: { text: string; isError: boolean }[]
   answer?: string
+  bg?: boolean // run_in_background
+  wf?: boolean // started by a workflow script's agent()
 }
+// Background work of the main loop or a subagent: shells, monitors, and wakeups (CronCreate, ScheduleWakeup, /loop).
+type BgTask = { id: string; kind: 'shell' | 'monitor' | 'wakeup'; text: string; who: string; startedAt: number; endedAt?: number; isStopped?: boolean; fireAt?: number; recurring?: boolean }
 
 let agents: Agent[] = []
 let subTools = 0 // tool calls made inside subagents
@@ -328,6 +335,9 @@ type Todo = { id?: string; content: string; status: string; activeForm?: string 
 let todos: Todo[] = [] // main session's TodoWrite list, or its TaskCreate/TaskUpdate tasks (keyed by id)
 // A subagent's turn.complete can come before its agent.spawn returns: kept here until the card learns its agentId.
 const agentDone = new Map<string, { at: number; failed: boolean; answer: string }>()
+let bgTasks: BgTask[] = []
+let mainTool = '' // the main loop's latest tool call while it runs
+let mainEndedAt: number | null = null
 
 function agentsProgressRedraw($: any) { return $.ui.invalidate('ui.render') }
 const running = () => agents.filter(a => a.endedAt === undefined)
@@ -335,6 +345,9 @@ const finished = () => agents.filter(a => a.endedAt !== undefined)
 const pctDone = () => (agents.length ? (finished().length / agents.length) * 100 : 0)
 const agentColor = (a: Agent) => (a.endedAt === undefined ? C.agent : a.failed ? C.warn : C.gate)
 const agentGlyph = (a: Agent) => (a.endedAt === undefined ? '◐' : a.failed ? '✗' : '✓')
+// A one-shot wakeup is over once its time passes; a recurring cron stays until deleted.
+const bgLive = (now: number) => bgTasks.filter(t => t.endedAt === undefined && (t.kind !== 'wakeup' || t.recurring || (t.fireAt ?? 0) > now))
+const bgShown = (now: number) => [...bgLive(now), ...bgTasks.filter(t => t.endedAt !== undefined).slice(-3).reverse()]
 const agentName = (agentId: string | undefined) => {
   if (!agentId) return 'main'
   const a = agents.find(x => x.agentId === agentId)
@@ -350,7 +363,7 @@ async function agentsProgressSync($: any) {
 
 export async function agentsProgressSessionStart($: any, e: any, next: any) {
   await $.command.register({ name: 'agents-info', description: 'Show the subagents in the cockpit pane' })
-  $.clock.every(1000, () => running().length && agentsProgressRedraw($)) // elapsed-time tick where clocks cannot run
+  $.clock.every(1000, () => (running().length || bgTasks.some(t => t.endedAt === undefined)) && agentsProgressRedraw($)) // elapsed-time tick where clocks cannot run
   $.clock.every(8000, () => running().length && void agentsProgressSync($))
   return next(e)
 }
@@ -362,7 +375,7 @@ export async function agentsProgressCommandRunAgentsInfo($: any) {
 }
 
 export async function agentsProgressAgentSpawn($: any, e: any, next: any) {
-  const a: Agent = { id: e.tool_use_id, type: e.subagentType, desc: e.description, startedAt: await $.clock.now(), steps: 0, ctx: 0, out: 0, tools: [] }
+  const a: Agent = { id: e.tool_use_id, type: e.subagentType, desc: e.description, startedAt: await $.clock.now(), steps: 0, ctx: 0, out: 0, tools: [], bg: e.background === true, wf: e.workflow !== undefined }
   agents = [...agents, a].slice(-50)
   agentsProgressRedraw($)
   const r = await next(e)
@@ -398,7 +411,10 @@ export async function* agentsProgressTurnStep($: any, e: any, next: any) {
 
 export async function agentsProgressTurnComplete($: any, e: any, next: any) {
   const done = await next(e)
-  if (e.agentId !== undefined) {
+  if (e.agentId === undefined) {
+    mainTool = ''
+    mainEndedAt = await $.clock.now()
+  } else {
     const at = await $.clock.now()
     const failed = e.reason !== 'answer'
     const answer = shorten(e.answer ?? '', 400)
@@ -410,35 +426,62 @@ export async function agentsProgressTurnComplete($: any, e: any, next: any) {
   return done
 }
 
+// The tool shows as the loop's current one while it runs; todos, tasks and background work are read from its result.
 export async function agentsProgressToolCall($: any, e: any, next: any) {
-  if (e.agentId !== undefined) {
-    subTools += 1
-    const r = await next(e)
-    const a = agents.find(x => x.agentId === e.agentId)
-    if (a) a.tools = [...a.tools, { text: describeInput(String(e.tool), e), isError: r.deny !== undefined || r.isError === true }].slice(-3)
-    return r
+  const tool = String(e.tool)
+  const isMain = e.agentId === undefined
+  const step = { text: describeInput(tool, e), isError: false }
+  const a = isMain ? undefined : agents.find(x => x.agentId === e.agentId)
+  if (!isMain) subTools += 1
+  if (a) a.tools = [...a.tools, step].slice(-3)
+  if (isMain) mainTool = step.text
+  if (isMain && tool === 'TodoWrite' && Array.isArray(e.todos)) todos = e.todos
+  agentsProgressRedraw($)
+  const r = await next(e)
+  step.isError = r.deny !== undefined || r.isError === true
+  if (isMain && mainTool === step.text) mainTool = ''
+  if (isMain && !step.isError && tool === 'TaskCreate' && r.result?.task?.id !== undefined) {
+    todos = [...todos, { id: String(r.result.task.id), content: e.subject, status: 'pending', activeForm: e.activeForm }]
+  } else if (isMain && !step.isError && tool === 'TaskUpdate') {
+    todos = (e.status === 'deleted'
+      ? todos.filter(t => t.id !== e.taskId)
+      : todos.map(t => (t.id === e.taskId ? { ...t, content: e.subject ?? t.content, status: e.status ?? t.status, activeForm: e.activeForm ?? t.activeForm } : t)))
   }
-  if (e.tool === 'TodoWrite' && Array.isArray(e.todos)) {
-    todos = e.todos
-    agentsProgressRedraw($)
-  } else if (e.tool === 'TaskCreate') {
-    const r = await next(e)
-    const id = r.result?.task?.id
-    if (id !== undefined && !r.isError) {
-      todos = [...todos, { id: String(id), content: e.subject, status: 'pending', activeForm: e.activeForm }]
-      agentsProgressRedraw($)
-    }
-    return r
-  } else if (e.tool === 'TaskUpdate') {
-    const r = await next(e)
-    if (!r.isError && r.deny === undefined) {
-      todos = (e.status === 'deleted'
-        ? todos.filter(t => t.id !== e.taskId)
-        : todos.map(t => (t.id === e.taskId ? { ...t, content: e.subject ?? t.content, status: e.status ?? t.status, activeForm: e.activeForm ?? t.activeForm } : t)))
-      agentsProgressRedraw($)
-    }
-    return r
+  if (!step.isError) await agentsProgressBackground($, e, r.result ?? {})
+  agentsProgressRedraw($)
+  return r
+}
+
+async function agentsProgressBackground($: any, e: any, res: any) {
+  const at = await $.clock.now()
+  const who = agentName(e.agentId)
+  const add = (t: BgTask) => { bgTasks = [...bgTasks.filter(x => x.id !== t.id), t].slice(-20) }
+  if (e.tool === 'Bash' && res.backgroundTaskId) add({ id: String(res.backgroundTaskId), kind: 'shell', text: e.description || e.command || 'shell', who, startedAt: at })
+  else if (e.tool === 'Monitor' && res.taskId) add({ id: String(res.taskId), kind: 'monitor', text: e.description || e.command || 'monitor', who, startedAt: at })
+  else if (e.tool === 'CronCreate' && res.id) add({ id: `cron:${res.id}`, kind: 'wakeup', text: `${res.humanSchedule ?? e.cron} · ${e.prompt ?? ''}`, who, startedAt: at, fireAt: res.nextFireAt, recurring: res.recurring === true })
+  else if (e.tool === 'CronDelete') bgTasks = bgTasks.filter(t => t.id !== `cron:${e.id}`)
+  else if (e.tool === 'ScheduleWakeup') {
+    bgTasks = bgTasks.filter(t => t.id !== 'wakeup') // one dynamic /loop wakeup at a time
+    if (!e.stop && res.scheduledFor) add({ id: 'wakeup', kind: 'wakeup', text: e.reason || e.prompt || 'wakeup', who, startedAt: at, fireAt: res.scheduledFor })
+  } else if (e.tool === 'TaskStop') {
+    const id = String(e.task_id ?? e.shell_id ?? '')
+    bgTasks = bgTasks.map(t => (t.id === id && t.endedAt === undefined ? { ...t, endedAt: at, isStopped: true } : t))
   }
+}
+
+// Stop lists the background work still in flight: a shell or monitor missing from it has ended, a cron was deleted.
+// shortcut: an ended task shows as done whether it passed or failed; read the task-notification status if that matters.
+export async function agentsProgressStop($: any, e: any, next: any) {
+  const at = await $.clock.now()
+  if (Array.isArray(e.background_tasks)) {
+    const live = new Set(e.background_tasks.map((t: any) => String(t.id)))
+    bgTasks = bgTasks.map(t => (t.kind !== 'wakeup' && t.endedAt === undefined && !live.has(t.id) ? { ...t, endedAt: at } : t))
+  }
+  if (Array.isArray(e.session_crons)) {
+    const crons = new Set(e.session_crons.map((c: any) => `cron:${c.id}`))
+    bgTasks = bgTasks.filter(t => !t.id.startsWith('cron:') || crons.has(t.id))
+  }
+  agentsProgressRedraw($)
   return next(e)
 }
 
@@ -460,6 +503,8 @@ export async function agentsProgressUiRenderAbovePrompt($: any, e: any, next: an
       spec: { title: 'Agents', tone: 'info', busy: true, pct: pctDone(), pctLabel: `${live.length} running · ${finished().length}/${agents.length}` },
     })
   }
+  const bg = bgLive(await $.clock.now()).length
+  if (bg) quiet({ key: 'bg', text: `${bg} background`, onPress: () => cockpitOpen($) })
   const done = todos.filter(t => t.status === 'completed').length
   if (todos.length > 0 && done < todos.length) {
     const { title } = todoTitle()
@@ -467,6 +512,46 @@ export async function agentsProgressUiRenderAbovePrompt($: any, e: any, next: an
   }
   return nested
 }
+
+// The main loop's row: working or idle, the tool it runs now, its requests and the turn's clock.
+function agentsProgressMainRow(ui: any, e: any, w: number, now: number) {
+  const { Box, Text } = ui
+  return (
+    <Box columnGap={1} width={w}>
+      <Text color={C.main}>{deckRunning ? '◐' : '○'}</Text>
+      <Text color={C.main} bold>main</Text>
+      <Box flexGrow={1} flexShrink={1}><Text dimColor={!deckRunning} wrap="truncate">{deckRunning ? mainTool || 'thinking' : 'idle'}</Text></Box>
+      <Box flexShrink={0}><Text dimColor>{`${deckSteps} req`}</Text></Box>
+      {deckTurn.startedAt ? <Box flexShrink={0}>{liveClock(ui, e, 'main-clock', deckTurn.startedAt, now, deckRunning ? null : mainEndedAt, C.dim)}</Box> : null}
+    </Box>
+  )
+}
+
+// Background shells, monitors and wakeups: the live ones, then the last three that ended.
+function agentsProgressBgRows(ui: any, e: any, w: number, now: number) {
+  const { Box, Text } = ui
+  const shown = bgShown(now)
+  return (
+    <Box flexDirection="column" width={w} marginTop={1}>
+      <Text bold wrap="truncate">{`background · ${bgLive(now).length} running`}</Text>
+      {shown.length ? null : <Text color={C.faint}>no background tasks</Text>}
+      {shown.map(t => (
+        <Box key={`bg-${t.id}`} columnGap={1}>
+          <Text color={t.endedAt === undefined ? C.agent : t.isStopped ? C.warn : C.gate}>{t.endedAt === undefined ? '◐' : t.isStopped ? '✗' : '✓'}</Text>
+          {w >= 40 ? <Box width={7} flexShrink={0}><Text color={C.dim}>{t.kind}</Text></Box> : null}
+          <Box flexGrow={1} flexShrink={1}><Text dimColor={t.endedAt !== undefined} wrap="truncate">{t.who === 'main' ? t.text : `${t.text} · ${t.who}`}</Text></Box>
+          <Box flexShrink={0}>
+            {t.kind !== 'wakeup' ? liveClock(ui, e, `bg-clock-${t.id}`, t.startedAt, now, t.endedAt ?? null, C.dim)
+              : <Text dimColor>{t.fireAt && t.fireAt > now ? `in ${fmtTimer(t.fireAt - now)}` : t.recurring ? 'recurring' : ''}</Text>}
+          </Box>
+        </Box>
+      ))}
+    </Box>
+  )
+}
+
+const agentTag = (a: Agent) => `${a.type}${a.wf ? ' · wf' : a.bg ? ' · bg' : ''}`
+const agentNow = (a: Agent) => (a.tools.length ? `· ${a.tools[a.tools.length - 1].text}` : '')
 
 // Cards side by side while they fit (maxCards, 20 columns each), swimlanes on one time axis beyond that.
 function agentsProgressPanel($: any, ui: any, e: any, w: number, now: number) {
@@ -501,17 +586,20 @@ function agentsProgressPanel($: any, ui: any, e: any, w: number, now: number) {
           const from = Math.min(barW, Math.floor(((a.startedAt - start) / span) * barW))
           const to = Math.min(barW, Math.max(from + 1, Math.ceil((((a.endedAt ?? now) - start) / span) * barW)))
           return (
-            <Box key={`lane-${a.id}`} columnGap={1}>
-              <Text color={agentColor(a)}>{agentGlyph(a)}</Text>
-              <Box width={labelW} flexShrink={0}><Button key={`card-${a.id}`} plain hotkey={String(i + 1)} label={shorten(a.desc || a.type, labelW - 3)} onPress={expand(a.id)} /></Box>
-              <Box flexShrink={0}>
-                <Text>
-                  <Text color={C.faint}>{'·'.repeat(from)}</Text>
-                  <Text color={agentColor(a)}>{'━'.repeat(to - from)}</Text>
-                  <Text color={C.faint}>{'·'.repeat(barW - to)}</Text>
-                </Text>
+            <Box key={`lane-${a.id}`} flexDirection="column">
+              <Box columnGap={1}>
+                <Text color={agentColor(a)}>{agentGlyph(a)}</Text>
+                <Box width={labelW} flexShrink={0}><Button key={`card-${a.id}`} plain hotkey={String(i + 1)} label={shorten(a.desc || a.type, labelW - 3)} onPress={expand(a.id)} /></Box>
+                <Box flexShrink={0}>
+                  <Text>
+                    <Text color={C.faint}>{'·'.repeat(from)}</Text>
+                    <Text color={agentColor(a)}>{'━'.repeat(to - from)}</Text>
+                    <Text color={C.faint}>{'·'.repeat(barW - to)}</Text>
+                  </Text>
+                </Box>
+                {liveClock(ui, e, `lane-clock-${a.id}`, a.startedAt, now, a.endedAt ?? null, C.dim)}
               </Box>
-              {liveClock(ui, e, `lane-clock-${a.id}`, a.startedAt, now, a.endedAt ?? null, C.dim)}
+              {a.endedAt === undefined && agentNow(a) && w >= 40 ? <Box paddingLeft={2}><Text color={C.faint} wrap="truncate">{agentNow(a)}</Text></Box> : null}
             </Box>
           )
         })}
@@ -527,8 +615,9 @@ function agentsProgressPanel($: any, ui: any, e: any, w: number, now: number) {
           {shown.map((a, i) => (
             <Box key={`c-${a.id}`} flexDirection="column" borderStyle={agentsExpanded === a.id ? 'double' : 'round'} borderColor={a.lastStop === 'max_tokens' ? C.warn : C.agent} borderDimColor={a.endedAt !== undefined} width={cardW} paddingX={1}>
               <Button key={`card-${a.id}`} plain hotkey={String(i + 1)} label={shorten(a.desc || a.type, cardW - 7)} onPress={expand(a.id)} />
-              <Text color={C.dim} wrap="truncate">{a.model ? `${a.type} · ${prettyModel(a.model)}` : a.type}</Text>
+              <Text color={C.dim} wrap="truncate">{a.model ? `${agentTag(a)} · ${prettyModel(a.model)}` : agentTag(a)}</Text>
               <Text dimColor wrap="truncate">{a.steps > 0 ? `ctx ${fmtTok(a.ctx)} · out ${fmtTok(a.out)} · ${a.steps} st` : 'starting…'}</Text>
+              <Text color={C.faint} wrap="truncate">{agentNow(a) || '·'}</Text>
               <Box columnGap={1}>
                 <Text color={a.lastStop === 'max_tokens' ? C.warn : agentColor(a)}>{cardW >= 26 ? `${agentGlyph(a)} ${a.lastStop === 'max_tokens' ? 'max_tokens' : a.endedAt === undefined ? 'working' : a.failed ? 'failed' : 'done'}` : agentGlyph(a)}</Text>
                 <Box flexShrink={0}>{liveClock(ui, e, `card-clock-${a.id}`, a.startedAt, now, a.endedAt ?? null, C.dim)}</Box>
@@ -543,8 +632,9 @@ function agentsProgressPanel($: any, ui: any, e: any, w: number, now: number) {
   const x = agents.find(a => a.id === agentsExpanded)
   return (
     <Box flexDirection="column" width={w}>
-      {header}
+      {agentsProgressMainRow(ui, e, w, now)}
       {todos.length && done < todos.length ? line(ui, [{ spans: [{ text: cur ? '◐ ' : '○ ', color: C.agent }, { text: title }], fill: true }, { spans: gaugeSpans((done / todos.length) * 100, 6, C.agent, `${done}/${todos.length}`) }], w, 2) : null}
+      <Box marginTop={1}>{header}</Box>
       {body}
       {x ? (
         <Box flexDirection="column" borderStyle="single" borderColor={C.agent} paddingX={1} width={w}>
@@ -562,6 +652,7 @@ function agentsProgressPanel($: any, ui: any, e: any, w: number, now: number) {
         subTools ? { spans: [{ text: `${subTools} tool calls in subagents`, dim: true }] } : null,
       ], w, 2)}
       {finished().length ? <Button key="fin" plain hotkey="a" label={`${showFinished ? '▾' : '▸'} finished · ${finished().length}`} onPress={() => { showFinished = !showFinished; agentsProgressRedraw($) }} /> : null}
+      {agentsProgressBgRows(ui, e, w, now)}
     </Box>
   )
 }
@@ -2110,6 +2201,7 @@ export const register: Register = (on, options) => {
     return next(e)
   })
   if (!off('agentsProgress')) on('command.run', { command: 'agents-info' }, agentsProgressCommandRunAgentsInfo)
+  if (!off('agentsProgress')) on('classic.Stop', agentsProgressStop)
   on('agent.spawn', ($, e, next) => {
     const n5 = (x: any) => next(x)
     const n4 = (x: any) => (off('sessionLog') ? n5(x) : sessionLogAgentSpawn($, x, n5))
