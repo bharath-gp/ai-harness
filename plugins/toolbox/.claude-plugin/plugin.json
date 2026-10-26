@@ -1,8 +1,8 @@
 {
   "name": "toolbox",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "author": {
     "name": "Bharath G P"
   },
-  "description": "General-purpose skills, triggered by plain requests or named directly. commit-changes ('commit this'): commits the session's changes as atomic Conventional Commits with a why-first body, splits unrelated work, adds ticket refs (#123, PROJ-123), leaves other dirty files alone, never pushes. create-pr ('open a PR'): pushes the branch and opens or updates a PR filled from the repo's template (or a built-in one) with why, what, verification and review focus; drops commits already merged by squash. github-repo-setup ('set up this repo properly'): via gh, creates or hardens a repo with a branch-protection ruleset, squash-only merges, CI, CodeQL, Dependabot, CODEOWNERS, PR template, LICENSE, SECURITY.md, secret scanning and optional signed commits."
+  "description": "Everyday git and GitHub skills. Skills: commit-changes, create-pr, github-repo-setup."
 }

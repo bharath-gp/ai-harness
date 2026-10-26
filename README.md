@@ -11,33 +11,16 @@ Claude Code mods (needs Claude Code 2.1.287+). Inspired by savvy-progress, claud
 /plugin install toolbox@ai-harness
 ```
 
-`toolbox` holds general-purpose skills, not mods. Today: `commit-changes`, which writes a Conventional Commits message (why, not just what) and commits the session's changes, splitting unrelated work and adding ticket refs; `create-pr`, which opens a PR using the repo's template (or a built-in one) with why, what, verification and review focus; and `github-repo-setup`, which sets up or hardens a GitHub repo (new or existing) with branch protection, CI, CodeQL, Dependabot, secret scanning and optional signed commits via `gh`.
+`toolbox` holds general-purpose skills, not mods: `commit-changes`, `create-pr`, `github-repo-setup`.
 
-The other two plugins are bundles of mods. Every mod is on by default; turn individual mods off in the config menu (each is a boolean `userConfig` field, e.g. `cacheKeeper`) and the plugin reloads. Mods are not sandboxed: read the source first. `cockpit` draws into one side pane, `/cockpit`, docked beside the transcript in fullscreen and an 8-row summary inline otherwise. Both bundles take `palette` (`theme` follows your Claude Code theme, `pastel` uses fixed colours) and `motion` (`off` keeps animations still).
+`guardrails` and `cockpit` are bundles of mods, all on by default; turn individual mods off in the config menu (one boolean `userConfig` field each) and the plugin reloads. Mods are not sandboxed: read the source first. `cockpit` draws into one side pane, `/cockpit`. Both take `palette` (`theme` or `pastel`) and `motion` (`off` keeps animations still).
 
-| Bundle | Mod | What it does |
-| --- | --- | --- |
-| `guardrails` | `blast-radius` | Asks before destructive shell commands run |
-| | `secret-sentry` | Blocks API keys and private keys from being written into files |
-| | `reflect` | Spots corrections in your prompts and saves them as rules in CLAUDE.md |
-| | `assumption-tracker` | Lists the assumptions Claude made and sends fixes for the ones you mark wrong |
-| | `self-critique` | /critique panel that reviews Claude's last answer, with one-click fixes |
-| | `prompt-coach` | On the first prompt of a session only, rewrites it into a better prompt that makes Claude grill you about the open questions first; `/sharpen` on demand |
-| | `merge-sweep` | When a PR you opened in the session is merged, offers to remove its worktree, local branch and remote branch (never forces, keeps anything unsafe) |
-| `cockpit` | `agents-progress` | One panel in the cockpit pane: main-session activity and task progress, agents as cards or swimlanes with their current tool, and background shells, monitors and wakeups |
-| | `cache-keeper` | Cache countdown in the pane (a band in the last 5 minutes or when cold), /keepwarm pings and a cold-send dialog with cost estimate |
-| | `context-health` | Context gauge with compactions and a warning band, /ctx-handoff and /autohandoff |
-| | `token-meter` | Session tokens and cost; details: token types, project total, cost per turn, models |
-| | `usage-limits` | Session (5h) and weekly (7d) limit gauges with reset countdown and pace, a band from 70% |
-| | `filetree` | File tree pane with git status and highlights for files Claude reads and writes |
-| | `next-steps` | Suggests three next prompts after each turn |
-| | `architect` | The on-call architect: consults on a timeline, their inferred moment and advice |
-| | `permission-gate` | One cell per permission check with file/shell/other drill-downs, credentials masked |
-| | `loops` | Model loops no agent claims (workflow agents, compactions, forks) |
-| | `turn-receipt` | The running turn's clock, or the last turn's duration, agents, edits, errors, cost |
-| | `session-log` | Prompts, spawns, completions, consults, edits, errors and denials |
+| Bundle | Mods |
+| --- | --- |
+| `guardrails` | `blast-radius`, `secret-sentry`, `reflect`, `assumption-tracker`, `self-critique`, `prompt-coach`, `merge-sweep` |
+| `cockpit` | `agents-progress`, `cache-keeper`, `context-health`, `token-meter`, `usage-limits`, `filetree`, `next-steps`, `architect`, `permission-gate`, `loops`, `turn-receipt`, `session-log` |
 
-Per-plugin guides with usage for every mod and skill: [guardrails](plugins/guardrails/README.md), [cockpit](plugins/cockpit/README.md), [toolbox](plugins/toolbox/README.md).
+Mod and skill tables with commands and options: [guardrails](plugins/guardrails/README.md), [cockpit](plugins/cockpit/README.md), [toolbox](plugins/toolbox/README.md).
 
 ## Other coding agents
 
