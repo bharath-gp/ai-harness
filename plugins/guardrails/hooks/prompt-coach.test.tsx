@@ -42,7 +42,8 @@ test('first prompt is held and rewritten, no interview', async ($, on) => {
   for (const surface of ['terminal', 'desktop'] as const) {
     const tree = await pane($, surface)
     expect(tree).toContain('grill me about ambiguities')
-    expect(tree).toContain('Use in prompt box')
+    expect(tree).toContain('Use Prompt')
+    expect(tree).not.toContain('Use in prompt box')
     expect(tree).toContain('Dismiss (send original)')
   }
 })
@@ -95,7 +96,9 @@ test('a first prompt with an attachment is sent as typed', async ($, on) => {
   const { sent } = setup(on)
   const r = await submit($, PROMPT, { attachments: [{ type: 'image', mediaType: 'image/png', filename: 'shot.png' }] })
   expect(r.drop).toBeUndefined()
-  expect(await pane($, 'terminal')).not.toContain('Dismiss (send original)')
+  const tree = await pane($, 'terminal')
+  expect(tree).not.toContain('Dismiss (send original)')
+  expect(tree).not.toContain('Use Prompt')
   expect(sent).toEqual([])
 })
 
@@ -123,4 +126,14 @@ test('/sharpen falls back to the last user message, and a bare command with noth
 test('a bare /sharpen with nothing to coach prints usage', async ($, on) => {
   setup(on)
   expect(await sharpen($)).toContain('Usage')
+})
+
+test('Use Prompt sends the improved prompt as the user', async ($, on) => {
+  const { sent, filled } = setup(on)
+  await submit($)
+  await pane($, 'terminal')
+  await $.ui.press({ plugin: 'guardrails', surface: 'terminal', requestId: 'coach', key: 'use' })
+  await settle()
+  expect(sent).toEqual([DRAFT])
+  expect(filled).toEqual([])
 })

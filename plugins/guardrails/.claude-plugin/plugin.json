@@ -1,6 +1,6 @@
 {
   "name": "guardrails",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "types": "./types/index.d.ts",
   "description": "Safety and review of Claude's output. Mods: blast-radius, secret-sentry, reflect (/reflect-queue, /reflect-pause), assumption-tracker (/assumptions), self-critique (/critique), prompt-coach (/sharpen), merge-sweep.",
   "userConfig": {
