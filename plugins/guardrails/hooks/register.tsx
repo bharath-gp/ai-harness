@@ -529,7 +529,7 @@ type Coach = {
   busy: string
   err: string
   tipOnly?: boolean // the prompt carries attachments: it was sent as typed, the improved text is only offered
-  fromSubmit?: boolean // the session's first prompt, held until the user picks Use or Dismiss
+  fromSubmit?: boolean // the session's first prompt, held until the user picks Use Prompt or Dismiss
 }
 
 let coach: Coach | undefined
@@ -588,11 +588,9 @@ async function coachClose($: any, text?: string) {
   if (text) void $.prompt.submit({ text, asUser: true })
 }
 
-// Puts the improved prompt in the prompt box to edit; a held first prompt is not sent.
+// Sends the improved prompt as the user's own; a held first prompt is replaced by it.
 async function coachUse($: any, c: Coach) {
-  const r = await $.prompt.fill({ text: c.draft })
-  $.ui.toast(r.isFilled ? 'Prompt coach: improved prompt is in the prompt box' : 'Prompt coach: could not fill the prompt box, use Copy')
-  if (r.isFilled) await coachClose($)
+  await coachClose($, c.draft)
 }
 
 // Opens the pane and writes the draft; false when no surface draws a pane (the prompt then goes through unchanged).
@@ -633,7 +631,7 @@ export async function promptCoachPromptSubmit($: any, e: any, next: any) {
   // Attachments can't be re-sent with a rewritten prompt, so such a prompt goes through as typed and the pane only offers the improved text.
   const tipOnly = !!e.attachments?.length
   if (!(await coachStart($, t, true, tipOnly)) || tipOnly) return next(e)
-  return { drop: 'prompt-coach: review the improved prompt, then pick Use or Dismiss.' }
+  return { drop: 'prompt-coach: review the improved prompt, then pick Use Prompt or Dismiss.' }
 }
 
 export function promptCoachUiRenderPaneCoach($: any, e: any) {
@@ -666,7 +664,7 @@ export function promptCoachUiRenderPaneCoach($: any, e: any) {
             />
           )}
           <Box flexDirection="row" columnGap={1} flexWrap="wrap">
-            <Button key="use" label="Use in prompt box" hotkey="u" variant="primary" onPress={() => void coachUse($, c)} />
+            {!c.tipOnly && <Button key="use" label="Use Prompt" hotkey="u" variant="primary" onPress={() => void coachUse($, c)} />}
             <Button key="copy" label="Copy" hotkey="c" onPress={async () => { $.ui.toast((await $.ui.copy({ text: c.draft, surface: e.surface })).isCopied ? 'Copied' : 'Copy failed') }} />
             <Button key="change" label="Request changes" hotkey="e" onPress={() => { c.asking = !c.asking; redraw($) }} />
             {dismiss}
