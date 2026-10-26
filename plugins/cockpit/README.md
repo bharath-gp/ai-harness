@@ -54,7 +54,7 @@ Focus the pane with `ctrl+x tab`, then use these keys. Every one is also a butto
 
 | Mod | Shows | Commands |
 | --- | --- | --- |
-| [agents-progress](#agents-progress) | agents panel (cards or swimlanes), task progress | `/agents-info` |
+| [agents-progress](#agents-progress) | main activity, agents (cards or swimlanes), background tasks | `/agents-info` |
 | [cache-keeper](#cache-keeper) | cache row, countdown band, cold-send dialog | `/keepwarm`, `/cache-tax` |
 | [context-health](#context-health) | context gauge, warning band | `/ctx-handoff`, `/autohandoff` |
 | [token-meter](#token-meter) | session tokens, project total, cost, models | none |
@@ -69,9 +69,14 @@ Focus the pane with `ctrl+x tab`, then use these keys. Every one is also a butto
 
 ## agents-progress
 
-Watch subagents and your main task list.
+Follow the main session, its subagents and its background work in one panel.
 
-**Use:** the **agents** panel shows each subagent as a card while they fit: task, type and model, context and output tokens, steps, a live clock, and `max_tokens` in red. Animated rails fan out to the cards and merge back while any card runs. With more agents than `maxCards`, they switch to swimlanes on one time axis. Below the cards are session cost, context tokens, elapsed time and the tool calls made inside subagents. The main session's todo/task progress is a gauge at the top of the panel and a segment of the summary line. `/agents-info` opens the pane with finished agents shown. An agent ends on its own `turn.complete`, so background agents stay running until they finish.
+**Use:** the **agents** panel is always in the cockpit pane, in three sections:
+- **main:** working or idle, the tool the main loop runs now (`Edit → hooks/register.tsx`), its request count and the turn's clock. The todo/task progress is a gauge under it and a segment of the summary line.
+- **agents:** each subagent as a card while they fit: task, type and model (tagged `bg` for a background agent, `wf` for a workflow's), context and output tokens, steps, its current tool, a live clock, and `max_tokens` in red. Animated rails fan out to the cards and merge back while any card runs. With more agents than `maxCards`, they switch to swimlanes on one time axis, with the current tool under each running lane. Below are session cost, context tokens, elapsed time and the tool calls made inside subagents. `1`-`6` expand a card, `a` folds the finished ones.
+- **background:** shells started with `run_in_background` (or moved there with ctrl+B or a timeout), monitors, and wakeups from `CronCreate`, `ScheduleWakeup` and `/loop` with when they fire next, from the main loop or any subagent. A shell or monitor ends when the session's `Stop` no longer lists it, or on `TaskStop` (✗).
+
+Running agents and background tasks are also counted in the summary line above the prompt. `/agents-info` opens the pane with finished agents shown. An agent ends on its own `turn.complete`, so background agents stay running until they finish. Other sessions (side sessions) are not shown: a plugin sees only its own session.
 
 ## cache-keeper
 
