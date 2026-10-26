@@ -803,6 +803,7 @@ export async function sweepClean($: any, p: SweepPr) {
           if (r.exitCode === 0) done.push('remote branch deleted')
           else kept.push(`remote ${p.head}: ${sweepWhy(r)}`)
         } else if (sha) kept.push(`remote ${p.head} moved past the merged commit`)
+        else if ((await git('branch', '-dr', `origin/${p.head}`)).exitCode === 0) done.push('stale origin ref pruned') // remote already deleted; a missing ref just fails
       }
     }
   } catch (err) {

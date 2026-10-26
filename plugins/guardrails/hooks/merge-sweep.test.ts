@@ -129,3 +129,16 @@ test('never deletes the remote branch of a fork PR', async () => {
   await sweepClean($, { ...pr, isFork: true })
   expect(ran.some(c => c.startsWith('git push'))).toBe(false)
 })
+
+test('prunes the stale origin ref when the remote branch is already gone', async () => {
+  const { $, ran } = scripted({ tips: { local: OID } })
+  await sweepClean($, pr)
+  expect(ran).toContain('git branch -dr origin/feat')
+  expect(ran.some(c => c.startsWith('git push'))).toBe(false)
+})
+
+test('does not prune the origin ref of a remote that moved', async () => {
+  const { $, ran } = scripted({ tips: { local: OID, remote: 'c'.repeat(40) } })
+  await sweepClean($, pr)
+  expect(ran.some(c => c.startsWith('git branch -dr'))).toBe(false)
+})
