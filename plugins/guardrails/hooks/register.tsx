@@ -133,26 +133,24 @@ const drawCard = (ui: any, i: Impact) => {
   )
 }
 
+// Chained into the bundle's one Bash tool.call hook in `register`.
+export async function blastRadiusBash($: any, e: any, next: any) {
+  const hit = RISKY.find(([re]) => re.test(e.command))
+  if (!hit) return next(e)
+
+  pending = await assess($, e.command.trim(), hit[1])
+  const n = pending.files.length
+  const proceed = n > 0 ? `${hit[1] === 'delete' ? 'Delete' : 'Discard'} ${plural(n, 'file')}` : 'Proceed'
+  let answer: string
+  try {
+    answer = await $.ui.ask(`Blast Radius is holding this command: ${e.command.slice(0, 200)}`, { header: 'Blast Radius', options: [proceed, 'Cancel'] })
+  } finally {
+    pending = undefined
+  }
+  return answer === proceed ? next(e) : { deny: `${$.plugin.name}: user cancelled (${hit[1]}).` }
+}
+
 export const blastRadius: Register = on => {
-  on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
-    const hit = RISKY.find(([re]) => re.test(e.command))
-    if (!hit) return next(e)
-
-    pending = await assess($, e.command.trim(), hit[1])
-    const n = pending.files.length
-    const proceed = n > 0 ? `${hit[1] === 'delete' ? 'Delete' : 'Discard'} ${plural(n, 'file')}` : 'Proceed'
-    let answer: string
-    try {
-      answer = await $.ui.ask(`Blast Radius is holding this command: ${e.command.slice(0, 200)}`, { header: 'Blast Radius', options: [proceed, 'Cancel'] })
-    } finally {
-      pending = undefined
-    }
-    return answer === proceed ? next(e) : { deny: `${$.plugin.name}: user cancelled (${hit[1]}).` }
-  }).catch(($, e, next) =>
-    // ask rejects when nobody can answer (-p run): refuse rather than run it
-    next.called ? next(e) : { deny: `${$.plugin.name}: could not confirm a destructive command.` },
-  )
-
   // The impact card goes above the engine's own dialog, which keeps its Delete / Cancel buttons.
   on('ui.render', { component: 'AskUserQuestion' }, async ($, e, next) => {
     const q = (e.props.questions as { header?: string }[] | undefined)?.[0]
@@ -685,6 +683,160 @@ export function promptCoachUiRenderPaneCoach($: any, e: any) {
   )
 }
 
+// ===== merge-sweep =====
+// PRs this session opened with `gh pr create`, kept per session id in $.state (survives hot reload).
+const sweepPrsRef = { plugin: 'guardrails', key: 'prs' } as const
+const SWEEP_CREATE = /\bgh\s+pr\s+create\b/
+const SWEEP_PR_URL = /https:\/\/[^\s"')]+\/pull\/\d+/
+
+export async function mergeSweepBash($: any, e: any, next: any) {
+  if (!SWEEP_CREATE.test(e.command)) return next(e)
+  const ran = await next(e)
+  if (ran.deny !== undefined || ran.isError) return ran
+  const url = SWEEP_PR_URL.exec(ran.text ?? '')?.[0]
+  if (url) {
+    const member = { ...sweepPrsRef, id: await $.session.id() }
+    const prs: string[] = (await $.state.get(member)).value ?? []
+    if (!prs.includes(url)) await $.state.set(member, [...prs, url])
+  }
+  return ran
+}
+
+// Merged PRs waiting for an answer, rebuilt by the poll after a reload; a PR leaves the state list once cleaned or dismissed.
+type SweepPr = { url: string; head: string; oid: string; base: string; isFork: boolean }
+let sweepReady: SweepPr[] = []
+let sweepBusy = false
+
+const sweepRun = ($: any, argv: string[], cwd?: string) =>
+  $.process.run(argv, { cwd, timeoutMs: 30_000 }).catch((err: unknown) => ({ exitCode: 1, stdout: '', stderr: String(err) }))
+
+const sweepWhy = (r: { stderr: string }) => r.stderr.trim().split('\n')[0].slice(0, 120)
+
+export const sweepWorktrees = (text: string) =>
+  text
+    .split('\n\n')
+    .map(b => ({ path: /^worktree (.+)$/m.exec(b)?.[1] ?? '', branch: /^branch refs\/heads\/(.+)$/m.exec(b)?.[1] }))
+    .filter(w => w.path)
+
+async function sweepForget($: any, url: string) {
+  const member = { ...sweepPrsRef, id: await $.session.id() }
+  const prs: string[] = (await $.state.get(member)).value ?? []
+  await $.state.set(member, prs.filter(u => u !== url))
+  sweepReady = sweepReady.filter(p => p.url !== url)
+  $.ui.invalidate('ui.render')
+}
+
+async function sweepPoll($: any) {
+  const prs: string[] = (await $.state.get({ ...sweepPrsRef, id: await $.session.id() })).value ?? []
+  for (const url of prs) {
+    if (sweepReady.some(p => p.url === url)) continue
+    const r = await sweepRun($, ['gh', 'pr', 'view', url, '--json', 'state,headRefName,headRefOid,baseRefName,isCrossRepository'])
+    if (r.exitCode !== 0) continue // offline or not signed in: ask again next turn
+    try {
+      const j = JSON.parse(r.stdout)
+      if (j.state === 'MERGED') sweepReady = [...sweepReady, { url, head: j.headRefName, oid: j.headRefOid, base: j.baseRefName, isFork: !!j.isCrossRepository }]
+    } catch {}
+  }
+  $.ui.invalidate('ui.render')
+}
+
+// Never forces: a dirty worktree, a branch with later commits or a moved remote is kept and reported.
+// shortcut: the remote is assumed to be `origin`, upgrade when a PR's head lives on another remote.
+export async function sweepClean($: any, p: SweepPr) {
+  sweepBusy = true
+  $.ui.invalidate('ui.render')
+  const done: string[] = []
+  const kept: string[] = []
+  try {
+    const cwd = await $.session.root()
+    const git = (...a: string[]) => sweepRun($, ['git', ...a], cwd)
+    const wts = sweepWorktrees((await git('worktree', 'list', '--porcelain')).stdout)
+    const main = wts[0]
+    const here = (await git('rev-parse', '--show-toplevel')).stdout.trim()
+    if (!main || p.head === p.base) kept.push(`${p.head}: nothing to clean`)
+    else {
+      let blocked = false // the branch is still checked out somewhere
+      const wt = wts.find(w => w.branch === p.head)
+      if (wt === main) {
+        const r = await sweepRun($, ['git', 'switch', p.base], main.path)
+        if (r.exitCode === 0) {
+          main.branch = p.base
+          done.push(`switched to ${p.base}`)
+        } else {
+          blocked = true
+          kept.push(`switch to ${p.base} failed: ${sweepWhy(r)}`)
+        }
+      } else if (wt) {
+        if (wt.path === here) {
+          blocked = true
+          kept.push(`worktree ${wt.path} is the current directory: later run git worktree remove ${wt.path} && git branch -D ${p.head}`)
+        } else {
+          const r = await git('worktree', 'remove', wt.path)
+          if (r.exitCode === 0) done.push('worktree removed')
+          else {
+            blocked = true
+            kept.push(`worktree ${wt.path}: ${sweepWhy(r)}`)
+          }
+        }
+      }
+      if (main.branch === p.base) {
+        const r = await sweepRun($, ['git', 'pull', '--ff-only'], main.path)
+        if (r.exitCode === 0) done.push(`pulled ${p.base}`)
+        else kept.push(`pull ${p.base} failed: ${sweepWhy(r)}`)
+      } else kept.push(`${p.base} not pulled: main checkout is on ${main.branch ?? 'a detached head'}`)
+
+      if (!blocked) {
+        const tip = (await git('rev-parse', '--verify', '--quiet', `refs/heads/${p.head}`)).stdout.trim()
+        if (tip === p.oid) {
+          const r = await git('branch', '-D', p.head)
+          if (r.exitCode === 0) done.push('local branch deleted')
+          else kept.push(`local ${p.head}: ${sweepWhy(r)}`)
+        } else if (tip) kept.push(`local ${p.head} has commits after the merged ${p.oid.slice(0, 7)}`)
+      }
+
+      if (p.isFork) kept.push('remote branch: the PR is from a fork')
+      else {
+        const line = (await git('ls-remote', '--heads', 'origin', `refs/heads/${p.head}`)).stdout.split('\n').find(l => l.endsWith(`\trefs/heads/${p.head}`))
+        const sha = line?.split('\t')[0]
+        if (sha === p.oid) {
+          const r = await git('push', 'origin', '--delete', p.head)
+          if (r.exitCode === 0) done.push('remote branch deleted')
+          else kept.push(`remote ${p.head}: ${sweepWhy(r)}`)
+        } else if (sha) kept.push(`remote ${p.head} moved past the merged commit`)
+      }
+    }
+  } catch (err) {
+    kept.push(`failed: ${String(err).slice(0, 120)}`)
+  } finally {
+    sweepBusy = false
+  }
+  await sweepForget($, p.url)
+  $.ui.toast(`Cleanup: ${done.join(', ') || 'nothing removed'}${kept.length ? ` | kept: ${kept.join('; ')}` : ''}`)
+}
+
+export function mergeSweepTurnComplete($: any, e: any, next: any) {
+  void sweepPoll($).catch(() => {})
+  return next(e)
+}
+
+export async function mergeSweepUiRenderAbovePrompt($: any, e: any, next: any) {
+  if (e.props.hasSurvey || sweepReady.length === 0) return next(e)
+  const p = sweepReady[0]
+  return band($.ui.resolve(e), e, await below(next, e), {
+    title: `PR #${/\/pull\/(\d+)/.exec(p.url)?.[1]} merged`,
+    tone: 'ok',
+    busy: sweepBusy,
+    detail: sweepBusy ? 'cleaning up' : `clean up ${p.head}?`,
+    chips: sweepReady.length > 1 ? [`+${sweepReady.length - 1} more`] : [],
+    buttons: sweepBusy
+      ? []
+      : [
+          { key: 'clean', label: 'Clean up', hotkey: 'c', onPress: () => void sweepClean($, p) },
+          { key: 'skip', label: 'Dismiss', hotkey: 'd', plain: true, onPress: () => void sweepForget($, p.url) },
+        ],
+  })
+}
+
 // Each mod is on unless its userConfig flag is false (toggle in the config menu; the module reloads).
 export const register: Register = (on, options) => {
   usePalette(options.palette, options.motion)
@@ -698,6 +850,14 @@ export const register: Register = (on, options) => {
     return next(e)
   })
   if (options.blastRadius !== false) blastRadius(on)
+  // blast-radius and merge-sweep share the one Bash tool.call hook; merge-sweep is outermost so it sees the final result.
+  on('tool.call', { tool: 'Bash' }, ($, e, next) => {
+    const n = (x: any) => (options.blastRadius === false ? next(x) : blastRadiusBash($, x, next))
+    return options.mergeSweep === false ? n(e) : mergeSweepBash($, e, n)
+  }).catch(($, e, next) =>
+    // ask rejects when nobody can answer (-p run): refuse rather than run it
+    next.called || options.blastRadius === false ? next(e) : { deny: `${$.plugin.name}: could not confirm a destructive command.` },
+  )
   if (options.secretSentry !== false) secretSentry(on)
   on('session.start', ($, e, next) => {
     const n4 = (x: any) => next(x)
@@ -714,13 +874,13 @@ export const register: Register = (on, options) => {
     return options.reflect === false ? n1(e) : reflectPromptSubmit($, e, n1)
   })
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    const n2 = (x: any) => next(x)
+    const n2 = (x: any) => (options.mergeSweep === false ? next(x) : mergeSweepUiRenderAbovePrompt($, x, next))
     const n1 = (x: any) => (options.assumptionTracker === false ? n2(x) : assumptionTrackerUiRenderAbovePrompt($, x, n2))
     return options.reflect === false ? n1(e) : reflectUiRenderAbovePrompt($, e, n1)
   })
   if (options.assumptionTracker !== false) on('command.run', { command: 'assumptions' }, assumptionTrackerCommandRunAssumptions)
   on('turn.complete', ($, e, next) => {
-    const n2 = (x: any) => next(x)
+    const n2 = (x: any) => (options.mergeSweep === false ? next(x) : mergeSweepTurnComplete($, x, next))
     const n1 = (x: any) => (options.selfCritique === false ? n2(x) : selfCritiqueTurnComplete($, x, n2))
     return options.assumptionTracker === false ? n1(e) : assumptionTrackerTurnComplete($, e, n1)
   })
