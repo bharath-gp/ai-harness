@@ -91,7 +91,7 @@ Offers to clean up branches and worktrees once a PR you opened in this session i
 - If the branch is checked out in the main checkout, it runs `git switch <base>` first. The base branch is then pulled with `git pull --ff-only` whenever the main checkout is on it.
 - A linked worktree on the branch is removed with `git worktree remove` (no `--force`).
 - The local branch is deleted with `git branch -D` only when its tip equals the PR's `headRefOid`, so squash and rebase merges work and later local commits are never lost.
-- The remote branch is deleted from `origin` only when it still points at `headRefOid`, and never for a PR from a fork.
+- The remote branch is deleted from `origin` only when it still points at `headRefOid`, and never for a PR from a fork. When the remote branch is already gone (for example GitHub deleted it on merge), the stale local `origin/<branch>` ref is pruned; other refs are left alone.
 - Anything git refuses, a branch with later commits, a worktree you are standing in (with the command to run later) or a failed switch or pull is kept and listed in a toast.
 
 **Shares the `Bash` hook with blast-radius:** the bundle registers one `Bash` hook that chains both; `mergeSweep: false` turns this mod off without touching blast-radius.
