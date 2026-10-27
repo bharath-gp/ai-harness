@@ -202,11 +202,12 @@ test('blast-radius shows the model line, and the gate does not ask again for tha
   for (const surface of ['terminal', 'desktop']) expect(await dialog($, surface)).toContain('◆ tev1 flags this · 0.96')
   b.answer('Delete')
   expect((await call).deny).toBeUndefined()
-  // the engine's check of this call ran after the dialog: the gate let core decide without asking the model again
+  // where the engine checked this call after the dialog, the gate let core decide without asking the model again
   expect(m.asked.map(x => x.body.state.command)).toEqual(['rm -rf dist'])
   await settle()
   expect(m.stats().recent.some((x: any) => x.kind === 'blast')).toBe(true)
-  // only once: the next run of the same command is gated again
+  // the skip is for that call alone: a later run of the same command is gated again
+  m.tick(60_000)
   expect((await check($, 'rm -rf dist')).reason).toContain('Local decision model unsure')
 })
 

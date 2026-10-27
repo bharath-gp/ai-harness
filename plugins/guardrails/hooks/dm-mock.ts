@@ -34,6 +34,6 @@ export function mock(on: any, reply: Reply, o: { bench?: boolean; down?: boolean
     now += body.model === FAST ? 600 : 1500
     return ok({ model: body.model, answers: r, usage: { input_tokens: 100, output_tokens: 0 } })
   })
-  return { asked, stats: () => held.get('decisions') as any, store, held }
+  return { asked, stats: () => held.get('decisions') as any, store, held, tick: (ms: number) => { now += ms } }
 }
 

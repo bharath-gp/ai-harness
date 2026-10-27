@@ -314,7 +314,9 @@ export async function decisionModelsUiRenderAbovePrompt($: any, e: any, next: an
 const GATED = new Set(['Bash', 'PowerShell', 'Write', 'Edit', 'NotebookEdit'])
 let gateMode = '' // the permission mode, from the last UserPromptSubmit
 let gateTask = '' // the latest user prompt
-const gateAsked = new Set<string>() // Bash commands the user already approved in blast-radius's dialog
+// Bash commands the user just approved in blast-radius's dialog, with when: the engine's check of that call follows at once,
+// so an entry older than 30s (a host that raised no check) is stale and the command is gated as usual.
+const gateAsked = new Map<string, number>()
 
 export function decisionGateUserPromptSubmit(_$: any, e: any, next: any) {
   if (e.permission_mode) gateMode = e.permission_mode
@@ -364,7 +366,10 @@ export async function decisionGateToolCheck($: any, e: any, next: any) {
   if (!e.tool_use_id || core?.decision === 'deny' || gateMode === 'bypassPermissions' || gateMode === 'plan') return core
   if (core?.decision === 'ask' && (core.rule || core.setting)) return core // the user's own rule or setting asks: never lowered
   if (!GATED.has(e.tool) && !(e.tool.startsWith('mcp__') && !e.isReadOnly)) return core
-  if (e.tool === 'Bash' && typeof e.input?.command === 'string' && gateAsked.delete(e.input.command.trim())) return core
+  if (e.tool === 'Bash' && typeof e.input?.command === 'string') {
+    const at = gateAsked.get(e.input.command.trim())
+    if (at !== undefined && gateAsked.delete(e.input.command.trim()) && (await $.clock.now()) - at < 30_000) return core
+  }
   const r = await gateDecide($, e.tool, e.input)
   if (!r) return core
   const a = r.answers.verdict
@@ -632,7 +637,7 @@ export async function blastRadiusBash($: any, e: any, next: any) {
   } finally {
     pending = undefined
   }
-  if (answer === proceed && DM.gate) gateAsked.add(cmd) // the gate does not ask about it a second time
+  if (answer === proceed && DM.gate) gateAsked.set(cmd, await $.clock.now().catch(() => 0)) // the gate does not ask about it a second time
   return answer === proceed ? next(e) : { deny: `${$.plugin.name}: user cancelled (${hit[1]}).` }
 }
 
