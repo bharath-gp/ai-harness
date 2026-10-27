@@ -1114,8 +1114,11 @@ async function coachStart($: any, text: string, fromSubmit = false, tipOnly = fa
   const c: Coach = { fromSubmit, tipOnly, original: text, ctx: '', asking: false, busy: 'Writing your prompt…', err: '' }
   coach = c
   const r = await $.ui.open({ id: 'coach', title: 'Prompt coach', focus: true })
-  if (!r.isPlaced) {
+  // On a desktop session's first prompt the app's surface may not be attached yet: the pane is placed once it attaches.
+  // shortcut: matches the host's reason text, upgrade if ui.open gains a structured "pending" field.
+  if (!r.isPlaced && !/placed when a surface that does attaches/.test(r.reason ?? '')) {
     coach = undefined
+    await $.ui.close({ id: 'coach' }).catch(() => {}) // never left open and empty
     return false
   }
   void coachDraft($, c)
