@@ -5,14 +5,15 @@ const DRAFT = 'Role: senior engineer.\n\nBefore you start: grill me about ambigu
 const PROMPT = 'Build me a dashboard that shows sales numbers per region please'
 
 // Mocks one session; `sid` is the session id, `held` the host's $.state.
-function setup(on: any, sid: { id: string } = { id: 's1' }, held = new Map<string, boolean>(), box = '', last = '') {
+function setup(on: any, sid: { id: string } = { id: 's1' }, held = new Map<string, boolean>(), box = '', last = '', open: object = { isPlaced: true }) {
   const prompts: string[] = []
   const filled: string[] = []
   const sent: string[] = []
   on('model.complete', (_$: any, e: any) => { if (e.prompt.startsWith('Rewrite the user')) prompts.push(e.prompt); return { value: { isAnswered: true, text: DRAFT, usage } } })
   on('command.run', () => ({ value: { text: '' } }))
-  on('ui.open', () => ({ value: { isPlaced: true } }))
-  on('ui.close', () => ({ value: undefined }))
+  const closed: string[] = []
+  on('ui.open', () => ({ value: open }))
+  on('ui.close', (_$: any, e: any) => { closed.push(e.id); return { value: undefined } })
   on('ui.toast', () => ({ value: undefined }))
   on('session.model', () => ({ value: 'sonnet' }))
   on('session.id', () => ({ value: sid.id }))
@@ -22,7 +23,7 @@ function setup(on: any, sid: { id: string } = { id: 's1' }, held = new Map<strin
   on('state.get', (_$: any, e: any) => ({ value: { value: held.get(e.id), version: held.has(e.id) ? 1 : 0 } }))
   on('state.set', (_$: any, e: any) => { held.set(e.id, e.value); return { value: { isSet: true, version: 1 } } })
   on('prompt.submit', (_$: any, e: any) => { if (e.origin?.kind === 'plugin') sent.push(e.text); return { text: e.text } })
-  return { prompts, filled, sent, held }
+  return { prompts, filled, sent, held, closed }
 }
 const settle = () => new Promise(res => setTimeout(res, 50))
 const submit = async ($: any, text = PROMPT, extra: object = {}) => {
@@ -46,6 +47,21 @@ test('first prompt is held and rewritten, no interview', async ($, on) => {
     expect(tree).not.toContain('Use in prompt box')
     expect(tree).toContain('Dismiss (send original)')
   }
+})
+
+test('a pane placed once the desktop surface attaches still holds and coaches the first prompt', async ($, on) => {
+  const { prompts, closed } = setup(on, undefined, undefined, '', '', { isPlaced: false, reason: 'no attached surface places panes (desktop): placed when a surface that does attaches; once they detach, as a fresh open is' })
+  expect((await submit($)).drop).toBeDefined()
+  expect(prompts).toHaveLength(1)
+  expect(closed).toHaveLength(0)
+  expect(await pane($, 'desktop')).toContain('Use Prompt')
+})
+
+test('a pane that cannot be placed is closed and the prompt goes through', async ($, on) => {
+  const { prompts, closed } = setup(on, undefined, undefined, '', '', { isPlaced: false, reason: 'no-surface: no surface is attached ($.session.surfaces() is empty)' })
+  expect((await submit($)).drop).toBeUndefined()
+  expect(prompts).toHaveLength(0)
+  expect(closed).toEqual(['coach'])
 })
 
 test('first prompt of any length is coached', async ($, on) => {
