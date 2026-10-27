@@ -1,8 +1,8 @@
 {
   "name": "guardrails",
-  "version": "0.5.5",
+  "version": "0.6.0",
   "types": "./types/index.d.ts",
-  "description": "Safety and review of Claude's output. Mods: blast-radius, secret-sentry, reflect (/reflect-queue, /reflect-pause), assumption-tracker (/assumptions), self-critique (/critique), prompt-coach (/sharpen), merge-sweep.",
+  "description": "Safety and review of Claude's output, helped by local decision models. Mods: blast-radius, secret-sentry, reflect (/reflect-queue, /reflect-pause), assumption-tracker (/assumptions), self-critique (/critique), prompt-coach (/sharpen), merge-sweep, decision-gate (/decide-bench), auto-answer, model-picker.",
   "userConfig": {
     "blastRadius": {
       "type": "boolean",
@@ -65,6 +65,72 @@
       "title": "merge-sweep",
       "description": "Offers to clean up branches and worktrees once a PR created in the session is merged",
       "default": true
+    },
+    "decisionGate": {
+      "type": "boolean",
+      "title": "decision-gate",
+      "description": "Lets a local Ollama decision model approve routine tool calls; unsure ones are put to you",
+      "default": true
+    },
+    "autoAnswer": {
+      "type": "boolean",
+      "title": "auto-answer",
+      "description": "Lets a local decision model answer Claude's questions when the context alone decides them",
+      "default": true
+    },
+    "modelPicker": {
+      "type": "boolean",
+      "title": "model-picker",
+      "description": "Lets a local decision model pick the cheapest model that fits a subagent or your first prompt",
+      "default": true
+    },
+    "decisionThreshold": {
+      "type": "number",
+      "title": "Decision threshold",
+      "description": "How sure a local decision model must be (0-1) before its answer is used",
+      "default": 0.85
+    },
+    "decisionTimeoutMs": {
+      "type": "number",
+      "title": "Decision timeout (ms)",
+      "description": "How long to wait for a warm local decision model before asking as usual",
+      "default": 3000
+    },
+    "ollamaUrl": {
+      "type": "string",
+      "title": "Ollama URL",
+      "description": "Where the local decision models are served",
+      "default": "http://localhost:11434"
+    },
+    "fastModel": {
+      "type": "string",
+      "title": "Fast decision model",
+      "description": "Pin the fast tier to this model (empty: chosen by the benchmark)",
+      "default": ""
+    },
+    "strongModel": {
+      "type": "string",
+      "title": "Strong decision model",
+      "description": "Pin the strong tier to this model (empty: chosen by the benchmark)",
+      "default": ""
+    },
+    "benchEveryDays": {
+      "type": "number",
+      "title": "Benchmark every (days)",
+      "description": "Re-run the decision model benchmark after this many days",
+      "default": 30
+    },
+    "benchNonce": {
+      "type": "string",
+      "title": "Benchmark nonce",
+      "description": "Change to re-run the benchmark",
+      "default": ""
+    },
+    "subagentModels": {
+      "type": "string",
+      "title": "Subagent models",
+      "description": "Comma-separated models model-picker chooses from, cheapest first",
+      "default": "haiku,sonnet,opus"
     }
   }
 }
