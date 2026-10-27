@@ -536,15 +536,18 @@ let coach: Coach | undefined
 // Per-session "offered" flag in $.state (survives hot reload); only the session's first prompt is auto-coached, /sharpen coaches any.
 const coachedRef = { plugin: 'guardrails', key: 'coached' } as const
 
-// A prompt that opens with /command or a skill keeps that first line verbatim in front of the reworded text.
-const coachCommandLine = (text: string) => (text.startsWith('/') ? text.split('\n')[0].trim() : '')
+// A prompt that opens with /command or a skill keeps that command word verbatim in front of the reworded rest.
+const coachSplit = (text: string) => {
+  const m = text.startsWith('/') ? /^(\/\S+)\s*([\s\S]*)$/.exec(text) : null
+  return { cmd: m?.[1] ?? '', rest: m ? m[2].trim() : text }
+}
 
 const coachDraftPROMPT = (c: Coach) => {
-  const cmd = coachCommandLine(c.original)
+  const { cmd } = coachSplit(c.original)
   return (
     `Rewrite the user's prompt below as one better prompt for a coding assistant, following prompting best practices. Write it to the assistant in second person. Use these sections, omitting any with nothing to say: Role (persona), Goal (intent and why), Context, Requirements, Constraints, Out of scope, Acceptance criteria, Output format. Never invent requirements the user did not state. Always include a section "Before you start" instructing the assistant to grill the user, before doing any work, about every ambiguity, missing requirement and unstated assumption in the request: ask one question at a time, give options with a recommendation, look at the project itself for anything it can answer, and wait for the answers before starting. The assistant does the questioning, you do not ask anything. ` +
     (cmd
-      ? `The prompt opens with the slash command or skill line ${JSON.stringify(cmd)}; take what that skill does into account. Do not repeat that line and do not quote the original: reply with only the text that follows it.`
+      ? `The prompt opens with the slash command or skill ${JSON.stringify(cmd)}; take what that skill does into account. Do not repeat the command and do not quote the original: reply with only the improved text that follows it.`
       : 'End with an "Original request" section quoting the original prompt verbatim.') +
     ` Reply with only the prompt text, no preamble and no code fences.\n\n<project_context>\n${c.ctx}\n</project_context>\n<original_prompt>\n${c.original}\n</original_prompt>` +
     (c.changes ? `\n<previous_draft>\n${c.draft}\n</previous_draft>\n<requested_changes>\n${c.changes}\n</requested_changes>` : '')
@@ -573,7 +576,7 @@ async function coachDraft($: any, c: Coach) {
   c.busy = ''
   const body = r.isAnswered ? r.text.trim() : ''
   if (body) {
-    const cmd = coachCommandLine(c.original)
+    const { cmd } = coachSplit(c.original)
     c.draft = cmd ? `${cmd}\n\n${body}` : body
     c.changes = undefined
     c.asking = false
@@ -624,7 +627,9 @@ export async function promptCoachCommandRunSharpen($: any, e: any) {
 
 export async function promptCoachPromptSubmit($: any, e: any, next: any) {
   const t = e.text.trim()
-  if (e.origin?.kind === 'plugin' || e.command || !t) return next(e)
+  if (e.origin?.kind === 'plugin' || !t || /^\/sharpen(\s|$)/.test(t)) return next(e)
+  // A bare /command has nothing to reword: let it through without using up the session's first prompt.
+  if (t.startsWith('/') && !coachSplit(t).rest) return next(e)
   const member = { ...coachedRef, id: await $.session.id() }
   if ((await $.state.get(member)).value) return next(e)
   await $.state.set(member, true) // set on the first prompt whether or not it is coached: nothing later is auto-coached

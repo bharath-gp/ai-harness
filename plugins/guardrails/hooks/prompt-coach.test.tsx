@@ -53,11 +53,23 @@ test('first prompt of any length is coached', async ($, on) => {
   expect((await submit($, 'x'.repeat(5000))).drop).toBeDefined()
 })
 
-test('a first prompt starting with a slash command is coached and keeps the command line', async ($, on) => {
+test('a first prompt starting with a slash command is coached and keeps the command word', async ($, on) => {
   const { prompts } = setup(on)
   expect((await submit($, '/review-pr 42 --strict')).drop).toBeDefined()
-  expect(prompts[0]).toContain('/review-pr 42 --strict')
-  expect(await pane($, 'terminal')).toContain('/review-pr 42 --strict')
+  expect(prompts[0]).toContain('"/review-pr"')
+  expect(prompts[0]).toContain('42 --strict')
+  expect(await pane($, 'terminal')).toContain('/review-pr')
+})
+
+test('a slash first prompt the host flags as a command is still coached', async ($, on) => {
+  setup(on)
+  expect((await submit($, '/review-pr 42 --strict', { command: 'review-pr' })).drop).toBeDefined()
+})
+
+test('a bare slash command is not held and does not use up the first prompt', async ($, on) => {
+  setup(on)
+  expect((await submit($, '/clear', { command: 'clear' })).drop).toBeUndefined()
+  expect((await submit($)).drop).toBeDefined()
 })
 
 test('no later prompt is auto-coached, slash or not', async ($, on) => {
