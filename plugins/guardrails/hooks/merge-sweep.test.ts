@@ -54,6 +54,36 @@ test('a merged PR shows the cleanup band after a turn; an open PR does not', asy
   expect(prs()).toEqual([url])
 })
 
+// A PR merged on github.com while the session sits idle: no turn ever completes, so the check has to come from elsewhere.
+const watch = async ($: any, on: any) => {
+  mock(on, { text: url })
+  on('ui.render', { component: 'AbovePrompt' }, () => ({ type: 'engine', ref: 0 }) as never)
+  on('process.run', () => ({ value: { exitCode: 0, stderr: '', stdout: JSON.stringify({ state: 'MERGED', headRefName: 'feat', headRefOid: 'abc', baseRefName: 'main', isCrossRepository: false }) } }))
+  await $.tool.call({ tool: 'Bash', command: 'gh pr create' })
+}
+const settle = () => new Promise(r => setTimeout(r, 50))
+
+test('a merge is noticed when the next prompt is submitted, without a turn', { options: { reflect: false, assumptionTracker: false, selfCritique: false, promptCoach: false } }, async ($, on) => {
+  on('prompt.submit', () => ({ text: '' }) as never)
+  await watch($, on)
+  await $.prompt.submit({ text: 'hi', wait: false, origin: { kind: 'composer' } })
+  await settle()
+  expect(JSON.stringify(await render($))).toContain('PR #7 merged')
+})
+
+test('session start polls once and sets a repeating timer', { options: { reflect: false, assumptionTracker: false, selfCritique: false, promptCoach: false } }, async ($, on) => {
+  const every: number[] = []
+  on('clock.every', (_$: any, e: any) => { every.push(e.ms); return { value: 1 } })
+  on('session.start', () => ({ cwd: '/tmp' }) as never)
+  on('command.register', () => ({ value: { isRegistered: true } }))
+  await watch($, on)
+  await ($ as any).session.start({ cwd: '/tmp' })
+  await settle()
+  expect(every.length).toBeGreaterThan(0)
+  expect(every.every(ms => ms === 60_000)).toBe(true)
+  expect(JSON.stringify(await render($))).toContain('PR #7 merged')
+})
+
 // ---- the cleanup decisions, against a scripted git
 const OID = 'a'.repeat(40)
 const pr = { url, head: 'feat', oid: OID, base: 'main', isFork: false }
