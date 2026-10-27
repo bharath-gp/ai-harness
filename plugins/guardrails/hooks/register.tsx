@@ -509,7 +509,7 @@ export const RISKY: [RegExp, string][] = [
 ]
 
 type File = { path: string; size: number; tracked: boolean }
-type Impact = { cmd: string; verb: string; project: string; files: File[]; total: number; untracked: number; note: string; seen?: DmResult }
+type Impact = { cmd: string; verb: string; what: string; project: string; files: File[]; total: number; untracked: number; note: string; seen?: DmResult }
 
 let pending: Impact | undefined
 
@@ -536,9 +536,29 @@ const rmTargets = (cmd: string) => {
   return (m?.[1] ?? '').split(/\s+/).map(t => t.replace(/^['"]|['"]$/g, '')).filter(t => t && !t.startsWith('-'))
 }
 
+// One plain line on what the command does and what it reaches, read from the command itself.
+export const explain = (cmd: string) => {
+  const list = (ts: string[]) => (ts.length > 3 ? `${ts.slice(0, 3).join(', ')} +${ts.length - 3} more` : ts.join(', '))
+  let m: RegExpExecArray | null
+  if (/\brm\s/.test(cmd) && RISKY[0][0].test(cmd)) return `Removes ${list(rmTargets(cmd)) || 'the named paths'} and everything inside, skipping the trash`
+  if ((m = /\bgit\s+push\b([^\n;&|]*)/.exec(cmd))) {
+    if (/--delete\b/.test(m[1])) return 'Deletes a branch or tag on the remote for everyone'
+    const ref = m[1].trim().split(/\s+/).filter(t => !t.startsWith('-')).slice(1).join(' ').replace(/^\+/, '')
+    return `Overwrites ${ref ? `${ref} on the remote` : 'the remote branch'} with local history; commits only there are lost`
+  }
+  if (/\bgit\s+reset\s+--hard\b/.test(cmd)) return 'Resets every tracked file to the commit, dropping uncommitted changes'
+  if ((m = /\bgit\s+clean\s+-([a-zA-Z]*)/.exec(cmd))) return `Deletes untracked files${m[1].includes('d') ? ' and folders' : ''}${m[1].includes('x') ? ', ignored ones too' : ''}`
+  if (/\bgit\s+(checkout|restore)\s/.test(cmd)) return 'Reverts every modified tracked file to the last commit'
+  if ((m = /\bgit\s+branch\s+-D\s+(\S+)/.exec(cmd))) return `Deletes branch ${m[1]} even if its commits are not merged anywhere`
+  if (/\b(mkfs|dd\s+if=)/.test(cmd)) return `Writes raw data over ${/\bof=(\S+)/.exec(cmd)?.[1] ?? 'a disk or device'}, erasing what was there`
+  if (/\bfind\b/.test(cmd)) return `Deletes every file the find under ${/\bfind\s+(\S+)/.exec(cmd)?.[1] ?? '.'} matches`
+  if ((m = /\bDROP\s+(TABLE|DATABASE)\s+(?:IF\s+EXISTS\s+)?([\w."`]+)/i.exec(cmd))) return `Drops ${m[1].toLowerCase()} ${m[2]} and all its data`
+  return 'Changes cannot be undone from inside the session'
+}
+
 async function assess($: any, cmd: string, verb: string) {
   const cwd: string = await $.session.cwd()
-  const impact: Impact = { cmd, verb, project: cwd.slice(cwd.lastIndexOf('/') + 1), files: [], total: 0, untracked: 0, note: '' }
+  const impact: Impact = { cmd, verb, what: explain(cmd), project: cwd.slice(cwd.lastIndexOf('/') + 1), files: [], total: 0, untracked: 0, note: '' }
   if (verb === 'delete' && /\brm\b/.test(cmd)) {
     for (const t of rmTargets(cmd)) await collect($, t.startsWith('/') ? t : `${cwd}/${t}`, impact.files)
     const tracked = await $.process.run(['git', 'ls-files', '-z'], { cwd, timeoutMs: 8000 }).catch(() => undefined)
@@ -580,7 +600,7 @@ const groups = (files: File[], project: string) => {
 
 // The dialog takes at most 12 rows, the engine's own included (Claude Code 2.1.300 holds the desktop to 12 too),
 // and no size or place: so on every surface the card is flightdeck's borderless mini form, three flex rows. The
-// dialog's own question already names the command.
+// dialog's own question already names the command; the card's second row says what it does.
 const drawCard = (ui: any, i: Impact) => {
   const { Box, Text } = ui
   const n = i.files.length
@@ -598,6 +618,7 @@ const drawCard = (ui: any, i: Impact) => {
   return (
     <Box flexDirection="column">
       {row('t', <Text color={C.warn} bold wrap="truncate">{`BLAST RADIUS · ${act}`}</Text>, n > 0 ? `${plural(n, 'file')} · ${fmtSize(i.total)}` : `in ${i.project}`, null)}
+      <Text wrap="truncate">{i.what}</Text>
       <Text color={C.amber} wrap="truncate">{`⛨ ${i.note}`}</Text>
       {big && g6
         ? row(
