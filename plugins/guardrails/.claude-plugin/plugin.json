@@ -1,6 +1,6 @@
 {
   "name": "guardrails",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "types": "./types/index.d.ts",
   "description": "Safety and review of Claude's output, helped by local decision models. Mods: blast-radius, secret-sentry, reflect (/reflect-queue, /reflect-pause), assumption-tracker (/assumptions), self-critique (/critique), prompt-coach (/sharpen), merge-sweep, decision-gate (/decide-bench), auto-answer, model-picker.",
   "userConfig": {

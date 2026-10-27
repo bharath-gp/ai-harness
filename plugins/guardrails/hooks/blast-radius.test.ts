@@ -1,5 +1,5 @@
 import { expect, test } from 'claude-code/testing'
-import { RISKY } from './register'
+import { explain, RISKY } from './register'
 
 const held = (cmd: string) => RISKY.some(([re]) => re.test(cmd))
 
@@ -17,4 +17,13 @@ test('holds destructive spellings, including -R, long flags and +refspec', () =>
 test('does not hold harmless commands', () => {
   for (const c of ['rm file.txt', 'git push origin main', 'git status', 'ls -la'])
     expect(held(c)).toBe(false)
+})
+
+test('explains what a held command does and what it reaches', () => {
+  expect(explain('rm -rf build dist')).toContain('build, dist')
+  expect(explain('git push origin +main')).toContain('main on the remote')
+  expect(explain('git push --delete origin x')).toContain('Deletes a branch')
+  expect(explain('git branch -D topic')).toContain('topic')
+  expect(explain('git clean -fdx')).toContain('folders, ignored ones too')
+  expect(explain('psql -c "DROP TABLE users"')).toContain('table users')
 })

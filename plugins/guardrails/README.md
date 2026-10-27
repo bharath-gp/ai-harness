@@ -9,7 +9,7 @@ Safety and review of Claude's output, helped by local decision models. Needs Cla
 
 | Mod | What it does | Trigger | Commands |
 | --- | --- | --- | --- |
-| `blast-radius` | Asks before destructive shell commands run (`rm -r`, `git push --force`, `git reset --hard`, `DROP TABLE`, ...) and shows what they would hit | `Bash` tool call | none |
+| `blast-radius` | Asks before destructive shell commands run (`rm -r`, `git push --force`, `git reset --hard`, `DROP TABLE`, ...) and shows what they do and what they would hit | `Bash` tool call | none |
 | `secret-sentry` | Blocks API keys and private keys from being written into files | `Write`, `Edit`, `NotebookEdit` | none |
 | `reflect` | Spots corrections in your prompts and saves them as rules in CLAUDE.md | every prompt | `/reflect-queue`, `/reflect-pause` |
 | `assumption-tracker` | Lists the assumptions Claude made and sends fixes for the ones you mark wrong | end of each turn | `/assumptions` |
