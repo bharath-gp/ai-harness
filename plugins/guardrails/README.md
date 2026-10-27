@@ -15,7 +15,7 @@ Safety and review of Claude's output. Needs Claude Code 2.1.287+.
 | `assumption-tracker` | Lists the assumptions Claude made and sends fixes for the ones you mark wrong | end of each turn | `/assumptions` |
 | `self-critique` | Reviews Claude's last answer, with one-click fixes | on demand, or each turn | `/critique` |
 | `prompt-coach` | Rewrites your first prompt so Claude grills you about the open questions first | first prompt of a session | `/sharpen` |
-| `merge-sweep` | After a PR you opened is merged, offers to remove its worktree, local branch and remote branch; never forces | `gh pr create`, then end of each turn | none |
+| `merge-sweep` | After a PR you opened is merged, offers to remove its worktree, local branch and remote branch; never forces | `gh pr create`, then every minute, each prompt and each turn end | none |
 
 ## Config
 

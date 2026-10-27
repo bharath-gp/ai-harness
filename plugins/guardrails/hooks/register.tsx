@@ -704,6 +704,7 @@ export async function mergeSweepBash($: any, e: any, next: any) {
 type SweepPr = { url: string; head: string; oid: string; base: string; isFork: boolean }
 let sweepReady: SweepPr[] = []
 let sweepBusy = false
+let sweepPolling = false
 
 const sweepRun = ($: any, argv: string[], cwd?: string) =>
   $.process.run(argv, { cwd, timeoutMs: 30_000 }).catch((err: unknown) => ({ exitCode: 1, stdout: '', stderr: String(err) }))
@@ -725,6 +726,16 @@ async function sweepForget($: any, url: string) {
 }
 
 async function sweepPoll($: any) {
+  if (sweepPolling) return
+  sweepPolling = true
+  try {
+    await sweepPollOnce($)
+  } finally {
+    sweepPolling = false
+  }
+}
+
+async function sweepPollOnce($: any) {
   const prs: string[] = (await $.state.get({ ...sweepPrsRef, id: await $.session.id() })).value ?? []
   for (const url of prs) {
     if (sweepReady.some(p => p.url === url)) continue
@@ -813,6 +824,20 @@ export async function sweepClean($: any, p: SweepPr) {
   $.ui.toast(`Cleanup: ${done.join(', ') || 'nothing removed'}${kept.length ? ` | kept: ${kept.join('; ')}` : ''}`)
 }
 
+// A PR is usually merged on github.com while the session sits idle, so a turn end alone never sees it: also ask on every prompt and on a timer.
+const SWEEP_EVERY_MS = 60_000
+
+export async function mergeSweepSessionStart($: any, e: any, next: any) {
+  void sweepPoll($).catch(() => {}) // a resumed session still has its PRs in $.state
+  $.clock.every(SWEEP_EVERY_MS, () => void sweepPoll($).catch(() => {}))
+  return next(e)
+}
+
+export function mergeSweepPromptSubmit($: any, e: any, next: any) {
+  void sweepPoll($).catch(() => {})
+  return next(e)
+}
+
 export function mergeSweepTurnComplete($: any, e: any, next: any) {
   void sweepPoll($).catch(() => {})
   return next(e)
@@ -859,7 +884,7 @@ export const register: Register = (on, options) => {
   )
   if (options.secretSentry !== false) secretSentry(on)
   on('session.start', ($, e, next) => {
-    const n4 = (x: any) => next(x)
+    const n4 = (x: any) => (options.mergeSweep === false ? next(x) : mergeSweepSessionStart($, x, next))
     const n3 = (x: any) => (options.promptCoach === false ? n4(x) : promptCoachSessionStart($, x, n4))
     const n2 = (x: any) => (options.selfCritique === false ? n3(x) : selfCritiqueSessionStart($, x, n3))
     const n1 = (x: any) => (options.assumptionTracker === false ? n2(x) : assumptionTrackerSessionStart($, x, n2))
@@ -868,7 +893,8 @@ export const register: Register = (on, options) => {
   if (options.reflect !== false) on('command.run', { command: 'reflect-queue' }, reflectCommandRunReflectQueue)
   if (options.reflect !== false) on('command.run', { command: 'reflect-pause' }, reflectCommandRunReflectPause)
   on('prompt.submit', ($, e, next) => {
-    const n2 = (x: any) => (options.promptCoach === false ? next(x) : promptCoachPromptSubmit($, x, next)) // last, so reflect and assumption-tracker see the original first
+    const n3 = (x: any) => (options.mergeSweep === false ? next(x) : mergeSweepPromptSubmit($, x, next))
+    const n2 = (x: any) => (options.promptCoach === false ? n3(x) : promptCoachPromptSubmit($, x, n3)) // last, so reflect and assumption-tracker see the original first
     const n1 = (x: any) => (options.assumptionTracker === false ? n2(x) : assumptionTrackerPromptSubmit($, x, n2))
     return options.reflect === false ? n1(e) : reflectPromptSubmit($, e, n1)
   })
