@@ -1,7 +1,7 @@
 import type { Register } from 'claude-code'
 import { band, beginPass, box, gaugeSpans, line, quiet, quietLine, type BandSpec, type Piece } from './band'
 import { fileBadge, pill, sectionLabel } from './kit'
-import { C, DECK, MONO, P, SVG_COLORS, below, esc, fmtClock, fmtCost, fmtDur, fmtSize, fmtTimer, fmtTok, gauge, isRich, parsePorcelain, plural, prettyModel, shorten, usePalette, zoneTone } from './ui'
+import { C, DECK, MONO, P, SVG_COLORS, below, esc, fmtClock, fmtCost, fmtDur, fmtSize, fmtTimer, fmtTok, gauge, isRich, maskSecrets, parsePorcelain, plural, prettyModel, shorten, usePalette, zoneTone } from './ui'
 
 // ===== shared drawing =====
 // The look and the pane follow claude-flightdeck (MIT, see THIRD_PARTY_NOTICES.md).
@@ -92,7 +92,7 @@ export async function cockpitCommandRun($: any, e: any) {
   }
   const opened = await cockpitOpen($)
   if (!opened.isPlaced) return { text: `Cockpit is not shown yet: ${opened.reason}` }
-  return { text: 'Cockpit opened. Focus it with ctrl+x tab: 1-6 expand agents, f/s/o open the gate rows, h hands off, k keeps the cache warm, t shows token details.' }
+  return { text: 'Cockpit opened. Focus it with ctrl+x tab: 1-6 expand agents, f/s/o open the gate rows, h hands off, k keeps the cache warm, t shows token details, d decision details.' }
 }
 
 // Clears what the panels collected this session (agents, consults, checks, loops, log, receipt); cost and limits stay.
@@ -217,12 +217,13 @@ function cockpitMini($: any, ui: any, e: any, W: number, now: number, options: a
         on('cacheKeeper') && lastTouch ? { spans: [{ text: `· cache ${TTL - (now - lastTouch) > 0 ? mins(TTL - (now - lastTouch)) : 'cold'}`, dim: true }] } : null,
         on('agentsProgress') && todos.length ? { spans: [{ text: `· tasks ${todos.filter(t => t.status === 'completed').length}/${todos.length}`, dim: true }] } : null,
         on('agentsProgress') && bgLive(now).length ? { spans: [{ text: `· bg ${bgLive(now).length}`, dim: true }] } : null,
+        on('decisions') && dmLast ? { spans: [{ text: dmLast.offline ? '· local offline' : `· local ${fmtTok(dmLast.tokens ?? 0)} tok · ${dmCounts(dmLast).auto}/${dmCounts(dmLast).total} auto`, color: dmLast.offline ? C.amber : C.arch }] } : null,
       ], W)}
       {on('permissionGate') && s.total > 0 ? (
         <Box columnGap={1}>
           <Text dimColor>{gateLabel.toLowerCase()}</Text>
           <Box overflow="hidden" flexShrink={1}><Text wrap="truncate-start">{gateMarks(ui, gateRecent.slice(-Math.max(4, W - 50)))}</Text></Box>
-          <Box flexShrink={0}><Text color={s.deny ? C.warn : s.ask ? C.amber : C.dim}>{`${s.rule} allowed · ${s.cleared} ${gateDecider()} · ${s.deny} denied`}</Text></Box>
+          <Box flexShrink={0}><Text color={s.deny ? C.warn : s.ask ? C.amber : C.dim}>{`${s.rule} allowed · ${s.local ? `${s.local} local · ` : ''}${s.cleared} ${gateDecider()} · ${s.deny} denied`}</Text></Box>
         </Box>
       ) : null}
       {shown.map(a => (
@@ -257,6 +258,7 @@ export async function cockpitUiRenderPane($: any, e: any, options: any) {
     { id: 'main', draw: w => cockpitMainPanel($, ui, e, w, now, options) },
     ...(showArch ? [{ id: 'architect', draw: (w: number) => architectPanel(ui, w, now), flow: { active: archAdvising(), color: C.arch } }] : []),
     ...(on('permissionGate') && gateRecent.length ? [{ id: 'gate', draw: (w: number) => gatePanel($, ui, e, w), flow: { active: deckRunning, color: C.gate } }] : []),
+    ...(on('decisions') && dmLast ? [{ id: 'decisions', draw: (w: number) => decisionsPanel($, ui, w) }] : []),
     ...(on('agentsProgress') ? [{ id: 'agents', draw: (w: number) => agentsProgressPanel($, ui, e, w, now) }] : []),
     ...(on('loops') && loopsList.length ? [{ id: 'loops', draw: (w: number) => loopsPanel(ui, e, w, now) }] : []),
     ...(on('turnReceipt') && (deckRunning || receiptLast) ? [{ id: 'receipt', draw: (w: number) => receiptPanel(ui, e, w, now), flow: { active: deckRunning, color: C.main } }] : []),
@@ -272,8 +274,9 @@ export async function cockpitUiRenderPane($: any, e: any, options: any) {
       ))}
     </Box>
   )
-  const left = panels.filter(p => ['main', 'architect', 'gate'].includes(p.id))
-  const right = panels.filter(p => !['main', 'architect', 'gate'].includes(p.id))
+  const LEFT = ['main', 'architect', 'gate', 'decisions']
+  const left = panels.filter(p => LEFT.includes(p.id))
+  const right = panels.filter(p => !LEFT.includes(p.id))
   const legend = [
     { label: 'main', color: C.main },
     ...(on('agentsProgress') ? [{ label: 'agents', color: C.agent }] : []),
@@ -1845,11 +1848,13 @@ function architectPanel(ui: any, w: number, now: number) {
 }
 
 // ===== permission-gate =====
-// One cell per permission check: allowed by a rule, cleared by the decider (you or the auto-mode classifier), pending, denied.
+// One cell per permission check: allowed by a rule, approved by guardrails' local decision model, cleared by the decider
+// (you or the auto-mode classifier), pending, denied.
 type Bucket = 'file' | 'shell' | 'other'
-type Verdict = 'rule' | 'ask' | 'cleared' | 'deny'
+type Verdict = 'rule' | 'local' | 'ask' | 'cleared' | 'deny'
 type Check = { id: string; tool: string; bucket: Bucket; verdict: Verdict; inSubagent: boolean; detail: string; at: number }
-const gateZero = (): Record<Bucket, Record<Verdict, number>> => ({ file: { rule: 0, ask: 0, cleared: 0, deny: 0 }, shell: { rule: 0, ask: 0, cleared: 0, deny: 0 }, other: { rule: 0, ask: 0, cleared: 0, deny: 0 } })
+const gateZero = (): Record<Bucket, Record<Verdict, number>> => ({ file: { rule: 0, local: 0, ask: 0, cleared: 0, deny: 0 }, shell: { rule: 0, local: 0, ask: 0, cleared: 0, deny: 0 }, other: { rule: 0, local: 0, ask: 0, cleared: 0, deny: 0 } })
+const LOCAL_REASON = 'guardrails: approved by local decision model'
 let gateLabel = 'GATE'
 let gateRecent: Check[] = []
 let gateTotals = gateZero()
@@ -1858,33 +1863,24 @@ const FILE_TOOLS = new Set(['Read', 'Edit', 'Write', 'NotebookEdit', 'Glob', 'Gr
 const bucketOf = (tool: string): Bucket => (FILE_TOOLS.has(tool) ? 'file' : tool === 'Bash' || tool === 'PowerShell' ? 'shell' : 'other')
 const gateDecider = () => (deckMode === 'auto' ? 'classifier' : 'you')
 const gateSummary = () => {
-  const s = { rule: 0, ask: 0, cleared: 0, deny: 0 }
-  for (const b of ['file', 'shell', 'other'] as const) for (const v of ['rule', 'ask', 'cleared', 'deny'] as const) s[v] += gateTotals[b][v]
-  return { ...s, total: s.rule + s.ask + s.cleared + s.deny }
+  const s = { rule: 0, local: 0, ask: 0, cleared: 0, deny: 0 }
+  for (const b of ['file', 'shell', 'other'] as const) for (const v of ['rule', 'local', 'ask', 'cleared', 'deny'] as const) s[v] += gateTotals[b][v]
+  return { ...s, total: s.rule + s.local + s.ask + s.cleared + s.deny }
 }
-const SECRET_PATTERNS: [RegExp, string][] = [
-  [/(authorization\s*[:=]\s*)(bearer\s+|basic\s+)?\S+/gi, '$1$2•••'],
-  [/\b(bearer)\s+[A-Za-z0-9._~+/-]{8,}=*/gi, '$1 •••'],
-  [/\b(sk|pk|rk|ghp|gho|ghs|github_pat|xox[abprs])[-_][A-Za-z0-9_-]{8,}/g, '•••'],
-  [/((?:api[_-]?key|access[_-]?token|token|secret|password|passwd|pwd)\s*[=:]\s*)("[^"]*"|'[^']*'|\S+)/gi, '$1•••'],
-  [/(--(?:token|password|api-key|secret)[= ])\S+/gi, '$1•••'],
-  [/(\b[A-Z][A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD)=)\S+/g, '$1•••'],
-  [/(\b[a-z][a-z0-9+.-]*:\/\/[^\s/:@]+:)[^\s@]+@/gi, '$1•••@'],
-]
 // What a drill-down row or a log line may keep: one line saying what a call was about, credentials masked.
 const describeInput = (tool: string, input: any) => {
   const i = input && typeof input === 'object' ? input : {}
   const path = typeof i.file_path === 'string' ? i.file_path.split(/[\\/]/).slice(-2).join('/') : ''
   const what = typeof i.command === 'string' ? i.command : path || (typeof i.pattern === 'string' ? i.pattern : typeof i.url === 'string' ? i.url : typeof i.description === 'string' ? i.description : '')
-  return shorten(SECRET_PATTERNS.reduce((t, [re, to]) => t.replace(re, to), what ? `${tool} → ${what}` : tool), 90)
+  return shorten(maskSecrets(what ? `${tool} → ${what}` : tool), 90)
 }
-const gateColor = (c: Check) => (c.verdict === 'rule' ? C.gate : c.verdict === 'cleared' ? C.cleared : c.verdict === 'ask' ? C.amber : C.warn)
+const gateColor = (c: Check) => (c.verdict === 'rule' ? C.gate : c.verdict === 'local' ? C.arch : c.verdict === 'cleared' ? C.cleared : c.verdict === 'ask' ? C.amber : C.warn)
 const gateMarks = (ui: any, list: Check[]) => list.map(c => <ui.Text color={gateColor(c)} dimColor={c.inSubagent}>{c.verdict === 'deny' ? '✗' : '■'}</ui.Text>)
 
 export async function permissionGateToolCheck($: any, e: any, next: any) {
   const verdict = await next(e)
   if (e.tool_use_id) {
-    const v: Verdict = verdict.decision === 'allow' ? 'rule' : verdict.decision
+    const v: Verdict = verdict.decision === 'allow' ? (String(verdict.reason ?? '').startsWith(LOCAL_REASON) ? 'local' : 'rule') : verdict.decision
     const c: Check = { id: e.tool_use_id, tool: e.tool, bucket: bucketOf(e.tool), verdict: v, inSubagent: e.agentId !== undefined, detail: describeInput(e.tool, e.input), at: await $.clock.now() }
     // Keep the last 80, but never drop a pending ask: its settle must still find it.
     let extra = gateRecent.length + 1 - 80
@@ -1910,6 +1906,18 @@ export async function permissionGateToolCall($: any, e: any, next: any) {
   return ran
 }
 
+// guardrails may sit beneath this hook, its approval then landing after the check was counted as allowed or pending:
+// its `decisions` state names the checks it approved, which are retagged local here.
+function gateRetag(rows: any[]) {
+  const ids = new Set(rows.filter(r => r?.kind === 'gate' && r.id && r.verdict === 'allow').map(r => r.id))
+  gateRecent = gateRecent.map(c => {
+    if (!ids.has(c.id) || (c.verdict !== 'rule' && c.verdict !== 'ask')) return c
+    gateTotals[c.bucket][c.verdict] = Math.max(0, gateTotals[c.bucket][c.verdict] - 1)
+    gateTotals[c.bucket].local += 1
+    return { ...c, verdict: 'local' }
+  })
+}
+
 function gatePanel($: any, ui: any, e: any, w: number) {
   const { Box, Text, Button } = ui
   const s = gateSummary()
@@ -1918,6 +1926,7 @@ function gatePanel($: any, ui: any, e: any, w: number) {
   const strip = gateRecent.slice(-Math.max(8, isTerminal ? w - 4 : Math.floor((w - 4) / 1.5)))
   const totals = (short: boolean): Piece[] => [
     { key: 'r', spans: [{ text: '■', color: C.gate }, { text: short ? ` ${s.rule}` : ` ${s.rule} allowed`, dim: true }] },
+    ...(s.local ? [{ key: 'l', spans: [{ text: '■', color: C.arch }, { text: short ? ` ${s.local}` : ` ${s.local} local`, dim: true }] }] : []),
     { key: 'c', spans: [{ text: '■', color: C.cleared }, { text: short ? ` ${s.cleared}` : ` ${s.cleared} ${gateDecider()}`, dim: true }] },
     ...(s.ask ? [{ key: 'a', spans: [{ text: short ? `■ ${s.ask}` : `■ ${s.ask} pending`, color: C.amber }] }] : []),
     { key: 'd', spans: [{ text: short ? `✗ ${s.deny}` : `✗ ${s.deny} denied`, color: s.deny ? C.warn : C.dim }] },
@@ -1937,14 +1946,14 @@ function gatePanel($: any, ui: any, e: any, w: number) {
         <Box columnGap={2} flexWrap="wrap">
           {(['file', 'shell', 'other'] as const).map(b => {
             const t = gateTotals[b]
-            const n = t.rule + t.ask + t.cleared + t.deny
+            const n = t.rule + t.local + t.ask + t.cleared + t.deny
             return <Button key={`gate-${b}`} plain hotkey={b[0]} dimColor={n === 0} label={`${b} ${n}${gateOpen === b ? ' ▾' : ''}`} onPress={() => { gateOpen = gateOpen === b ? null : b; $.ui.invalidate('ui.render') }} />
           })}
         </Box>
         {gateOpen
           ? gateRecent.filter(c => c.bucket === gateOpen).slice(-5).map(c => (
               <Box key={`g-${c.id}`} columnGap={1}>
-                <Box width={12} flexShrink={0}><Text><Text color={gateColor(c)}>{c.verdict === 'deny' ? '✗ ' : '■ '}</Text><Text color={C.dim}>{c.verdict === 'rule' ? 'allowed' : c.verdict === 'cleared' ? gateDecider() : c.verdict === 'ask' ? 'pending' : 'denied'}</Text></Text></Box>
+                <Box width={12} flexShrink={0}><Text><Text color={gateColor(c)}>{c.verdict === 'deny' ? '✗ ' : '■ '}</Text><Text color={C.dim}>{c.verdict === 'rule' ? 'allowed' : c.verdict === 'local' ? 'local' : c.verdict === 'cleared' ? gateDecider() : c.verdict === 'ask' ? 'pending' : 'denied'}</Text></Text></Box>
                 <Box flexShrink={1}><Text dimColor={c.inSubagent} wrap="truncate">{c.detail}</Text></Box>
               </Box>
             ))
@@ -1955,6 +1964,77 @@ function gatePanel($: any, ui: any, e: any, w: number) {
 }
 // Totals in words where they all fit on the row, in numbers alone where they don't.
 const wordsFit = (pieces: Piece[], w: number) => pieces.reduce((n, p) => n + p.spans.reduce((m, s) => m + [...s.text].length, 0) + 2, 0) <= w - 4
+
+// ===== decisions =====
+// guardrails' local decision models, read from its `decisions` state: the local tokens they spent, what they decided, and
+// what that saved: the Claude tokens the same decisions would have cost, and the round trips through you they avoided.
+let dmLast: any = null // the latest GuardrailsDecisions
+let dmOpen = false
+
+export async function decisionsStateSet($: any, e: any, next: any, retag: boolean) {
+  const v = e.value
+  if (v && typeof v === 'object') {
+    const u = await $.session.usage().catch(() => null)
+    ctxTokens = u?.context?.tokens ?? ctxTokens
+    cost = u?.cost?.usd ?? cost
+    dmLast = v
+    if (retag) gateRetag(Array.isArray(v.recent) ? v.recent : [])
+    $.ui.invalidate('ui.render')
+  }
+  return next(e)
+}
+
+const dmCounts = (v: any) => {
+  const auto = (v.gate?.auto ?? 0) + (v.answers?.auto ?? 0) + (v.models?.picked ?? 0)
+  const asked = (v.gate?.asked ?? 0) + (v.answers?.asked ?? 0)
+  const kept = v.models?.kept ?? 0 // the model picker left the subagent's model as asked: a decision, not a question
+  return { auto, asked, kept, total: auto + asked + kept }
+}
+
+function decisionsPanel($: any, ui: any, w: number) {
+  const { Box, Text, Button } = ui
+  const v = dmLast
+  const n = dmCounts(v)
+  const tok = tmSum(tmSession)
+  // The session's average rate; with no cost or tokens yet the $ is left out.
+  const usd = cost > 0 && tok > 0 ? ` · ${fmtCost(((v.llmTokens ?? 0) * cost) / tok)}` : ''
+  const recent: any[] = Array.isArray(v.recent) ? v.recent.slice(-3).reverse() : []
+  const row = (label: string, text: string) => line(ui, [{ spans: [{ text: `${label} `, dim: true }, { text, dim: true }], fill: true }], w - 4)
+  return box(ui, {
+    key: 'decisions',
+    color: v.offline ? C.amber : C.arch,
+    title: 'DECISIONS',
+    state: v.offline ? 'offline' : 'local',
+    right: plural(v.calls ?? 0, 'call'),
+    w,
+    children: (
+      <Box flexDirection="column">
+        <Box columnGap={1}>
+          <Box flexGrow={1} flexShrink={1}>
+            <Text color={v.offline ? C.amber : C.text} wrap="truncate">{v.offline ? 'decision models offline · prompts as usual' : `local ${fmtTok(v.tokens ?? 0)} tok · ${plural(n.total, 'decision')} (${n.auto} auto · ${n.asked} asked)`}</Text>
+          </Box>
+          <Button key="dm" plain hotkey="d" label={dmOpen ? 'less' : 'details'} onPress={() => { dmOpen = !dmOpen; $.ui.invalidate('ui.render') }} />
+        </Box>
+        {dmOpen ? (
+          <Box flexDirection="column">
+            {row('local', `${fmtTok(v.tokens ?? 0)} tok · ${plural(v.calls ?? 0, 'call')}`)}
+            {row('saved (est)', `${fmtTok(v.llmTokens ?? 0)} tok${usd} as Claude decisions`)}
+            {row('round trips avoided (est)', `${fmtTok(dmLast.avoided ?? 0)} tok`)}
+            {n.kept ? row('subagent models', `${n.kept} kept`) : null}
+            {row('tiers', `fast ${v.fast || '—'} · strong ${v.strong || '—'}`)}
+            {recent.map((r, i) => (
+              <Box key={`dm-${i}`} columnGap={1}>
+                <Text color={C.arch}>◆</Text>
+                <Box flexShrink={0}><Text dimColor>{`${r.kind} ${r.verdict} ${Number(r.confidence ?? 0).toFixed(2)}`}</Text></Box>
+                <Box flexShrink={1}><Text wrap="truncate">{r.text}</Text></Box>
+              </Box>
+            ))}
+          </Box>
+        ) : null}
+      </Box>
+    ),
+  })
+}
 
 // ===== loops =====
 // Model loops no card claims: workflow agents, compactions, memory forks.
@@ -2213,6 +2293,7 @@ export const register: Register = (on, options) => {
   if (!off('architect')) on('agent.offer', architectAgentOffer)
   if (!off('architect')) on('session.append', architectSessionAppend)
   if (!off('permissionGate')) on('tool.check', permissionGateToolCheck)
+  if (!off('decisions')) on('state.set', { plugin: 'guardrails', key: 'decisions' }, ($, e, next) => decisionsStateSet($, e, next, !off('permissionGate')))
   on('session.compact', ($, e, next) => {
     const n1 = (x: any) => (off('sessionLog') ? next(x) : sessionLogSessionCompact($, x, next))
     return off('contextHealth') ? n1(e) : contextHealthSessionCompact($, e, n1)

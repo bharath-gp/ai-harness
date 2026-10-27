@@ -26,14 +26,15 @@ Live session dashboard in one side pane. Needs Claude Code 2.1.287+.
 | `filetree` | File tree with git status and highlights for files Claude reads and writes | `/filetree` |
 | `next-steps` | Three suggested prompts after each turn | none |
 | `architect` | Consult timeline with advice from the on-call architect | none |
-| `permission-gate` | One cell per permission check, credentials masked | none |
+| `permission-gate` | One cell per permission check, credentials masked; calls guardrails' local model approved show a `local` verdict | none |
 | `loops` | Model loops no agent claims (workflow agents, compactions, forks) | none |
 | `turn-receipt` | The running or last turn: clock, agents, edits, errors, cost | none |
 | `session-log` | Prompts, spawns, completions, consults, edits, errors, denials | none |
+| `decisions` | Local decision-model tokens and decision counts; details show local tokens, LLM-equivalent tokens and $ saved (est), and round trips avoided (est). Needs guardrails' decision mods for data | none |
 
 ## Config
 
-Every mod is on by default. Turn one off in the plugin config menu: `agentsProgress`, `cacheKeeper`, `contextHealth`, `tokenMeter`, `usageLimits`, `filetree`, `nextSteps`, `architect`, `permissionGate`, `loops`, `turnReceipt`, `sessionLog`. The plugin reloads.
+Every mod is on by default. Turn one off in the plugin config menu: `agentsProgress`, `cacheKeeper`, `contextHealth`, `tokenMeter`, `usageLimits`, `filetree`, `nextSteps`, `architect`, `permissionGate`, `loops`, `turnReceipt`, `sessionLog`, `decisions`. The plugin reloads.
 
 | Option | Default | Meaning |
 | --- | --- | --- |

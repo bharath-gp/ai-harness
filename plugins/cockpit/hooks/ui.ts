@@ -111,3 +111,17 @@ export const age = (ms: number) => {
   const m = Math.floor(ms / 60_000)
   return m < 1 ? 'now' : m < 60 ? `${m}m` : m < 1440 ? `${Math.floor(m / 60)}h` : `${Math.floor(m / 1440)}d`
 }
+
+// Credentials in a command or URL, masked before a line is shown or handed to a local decision model.
+const SECRET_PATTERNS: [RegExp, string][] = [
+  [/(authorization\s*[:=]\s*)(bearer\s+|basic\s+)?\S+/gi, '$1$2•••'],
+  [/\b(bearer)\s+[A-Za-z0-9._~+/-]{8,}=*/gi, '$1 •••'],
+  [/\b(sk|pk|rk|ghp|gho|ghs|github_pat|xox[abprs])[-_][A-Za-z0-9_-]{8,}/g, '•••'],
+  [/((?:api[_-]?key|access[_-]?token|token|secret|password|passwd|pwd)\s*[=:]\s*)("[^"]*"|'[^']*'|\S+)/gi, '$1•••'],
+  [/(--(?:token|password|api-key|secret)[= ])\S+/gi, '$1•••'],
+  [/(\b[A-Z][A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD)=)\S+/g, '$1•••'],
+  [/(\b[a-z][a-z0-9+.-]*:\/\/[^\s/:@]+:)[^\s@]+@/gi, '$1•••@'],
+  [/\bAKIA[0-9A-Z]{16}\b/g, '•••'],
+  [/((?:^|\s)(?:-u|--user)[\s=]+['"]?[^\s:'"]+:)[^\s'"]+/g, '$1•••'],
+]
+export const maskSecrets = (s: string) => SECRET_PATTERNS.reduce((t, [re, to]) => t.replace(re, to), s)
