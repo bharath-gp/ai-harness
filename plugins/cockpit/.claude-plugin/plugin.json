@@ -1,7 +1,7 @@
 {
   "name": "cockpit",
-  "version": "0.3.1",
-  "description": "Live session dashboard in one side pane (/cockpit). Mods: agents-progress (/agents-info), cache-keeper (/keepwarm, /cache-tax), context-health (/ctx-handoff, /autohandoff), token-meter, usage-limits, filetree (/filetree), next-steps, architect, permission-gate, loops, turn-receipt, session-log.",
+  "version": "0.4.0",
+  "description": "Live session dashboard in one side pane (/cockpit). Mods: agents-progress (/agents-info), cache-keeper (/keepwarm, /cache-tax), context-health (/ctx-handoff, /autohandoff), token-meter, usage-limits, filetree (/filetree), next-steps, architect, permission-gate, loops, turn-receipt, session-log, decisions.",
   "userConfig": {
     "agentsProgress": {
       "type": "boolean",
@@ -73,6 +73,12 @@
       "type": "boolean",
       "title": "session-log",
       "description": "Session log panel: prompts, spawns, completions, consults, edits, errors and denials",
+      "default": true
+    },
+    "decisions": {
+      "type": "boolean",
+      "title": "decisions",
+      "description": "Decisions panel: guardrails' local decision models, their local tokens, auto and asked decisions, and the Claude tokens they saved (est)",
       "default": true
     },
     "palette": {

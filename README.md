@@ -17,8 +17,8 @@ Claude Code mods (needs Claude Code 2.1.287+). Inspired by savvy-progress, claud
 
 | Bundle | Mods |
 | --- | --- |
-| `guardrails` | `blast-radius`, `secret-sentry`, `reflect`, `assumption-tracker`, `self-critique`, `prompt-coach`, `merge-sweep` |
-| `cockpit` | `agents-progress`, `cache-keeper`, `context-health`, `token-meter`, `usage-limits`, `filetree`, `next-steps`, `architect`, `permission-gate`, `loops`, `turn-receipt`, `session-log` |
+| `guardrails` | `blast-radius`, `secret-sentry`, `reflect`, `assumption-tracker`, `self-critique`, `prompt-coach`, `merge-sweep`, `decision-gate`, `auto-answer`, `model-picker` |
+| `cockpit` | `agents-progress`, `cache-keeper`, `context-health`, `token-meter`, `usage-limits`, `filetree`, `next-steps`, `architect`, `permission-gate`, `loops`, `turn-receipt`, `session-log`, `decisions` |
 
 Mod and skill tables with commands and options: [guardrails](plugins/guardrails/README.md), [cockpit](plugins/cockpit/README.md), [toolbox](plugins/toolbox/README.md).
 

@@ -7,12 +7,12 @@
     {
       "name": "guardrails",
       "source": "./plugins/guardrails",
-      "description": "Safety and review of Claude's output. Mods: blast-radius, secret-sentry, reflect (/reflect-queue, /reflect-pause), assumption-tracker (/assumptions), self-critique (/critique), prompt-coach (/sharpen), merge-sweep."
+      "description": "Safety and review of Claude's output, helped by local decision models. Mods: blast-radius, secret-sentry, reflect (/reflect-queue, /reflect-pause), assumption-tracker (/assumptions), self-critique (/critique), prompt-coach (/sharpen), merge-sweep, decision-gate (/decide-bench), auto-answer, model-picker."
     },
     {
       "name": "cockpit",
       "source": "./plugins/cockpit",
-      "description": "Live session dashboard in one side pane (/cockpit). Mods: agents-progress (/agents-info), cache-keeper (/keepwarm, /cache-tax), context-health (/ctx-handoff, /autohandoff), token-meter, usage-limits, filetree (/filetree), next-steps, architect, permission-gate, loops, turn-receipt, session-log."
+      "description": "Live session dashboard in one side pane (/cockpit). Mods: agents-progress (/agents-info), cache-keeper (/keepwarm, /cache-tax), context-health (/ctx-handoff, /autohandoff), token-meter, usage-limits, filetree (/filetree), next-steps, architect, permission-gate, loops, turn-receipt, session-log, decisions."
     },
     {
       "name": "toolbox",
