@@ -24,6 +24,8 @@ Safety and review of Claude's output, helped by local decision models. Needs Cla
 
 ## Config
 
+Run `/guardrails:guardrails-setup` (or ask "set up guardrails") to walk through these options one question at a time, on first use or later; it saves them with `claude plugin configure`.
+
 Every mod is on by default. Turn one off in the plugin config menu: `blastRadius`, `secretSentry`, `reflect`, `assumptionTracker`, `selfCritique`, `promptCoach`, `mergeSweep`, `decisionGate`, `autoAnswer`, `modelPicker`. The plugin reloads.
 
 | Option | Default | Meaning |
