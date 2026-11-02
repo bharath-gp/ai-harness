@@ -34,6 +34,8 @@ Live session dashboard in one side pane. Needs Claude Code 2.1.287+.
 
 ## Config
 
+Run `/cockpit:cockpit-setup` (or ask "set up cockpit") to walk through these options one question at a time, on first use or later; it saves them with `claude plugin configure`.
+
 Every mod is on by default. Turn one off in the plugin config menu: `agentsProgress`, `cacheKeeper`, `contextHealth`, `tokenMeter`, `usageLimits`, `filetree`, `nextSteps`, `architect`, `permissionGate`, `loops`, `turnReceipt`, `sessionLog`, `decisions`. The plugin reloads.
 
 | Option | Default | Meaning |

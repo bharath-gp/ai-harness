@@ -1,7 +1,7 @@
 {
   "name": "cockpit",
-  "version": "0.4.0",
-  "description": "Live session dashboard in one side pane (/cockpit). Mods: agents-progress (/agents-info), cache-keeper (/keepwarm, /cache-tax), context-health (/ctx-handoff, /autohandoff), token-meter, usage-limits, filetree (/filetree), next-steps, architect, permission-gate, loops, turn-receipt, session-log, decisions.",
+  "version": "0.5.0",
+  "description": "Live session dashboard in one side pane (/cockpit). Mods: agents-progress (/agents-info), cache-keeper (/keepwarm, /cache-tax), context-health (/ctx-handoff, /autohandoff), token-meter, usage-limits, filetree (/filetree), next-steps, architect, permission-gate, loops, turn-receipt, session-log, decisions. Skill: cockpit-setup (/cockpit:cockpit-setup).",
   "userConfig": {
     "agentsProgress": {
       "type": "boolean",

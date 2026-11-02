@@ -13,7 +13,7 @@ Claude Code mods (needs Claude Code 2.1.287+). Inspired by savvy-progress, claud
 
 `toolbox` holds general-purpose skills, not mods: `commit-changes`, `create-pr`, `github-repo-setup`.
 
-`guardrails` and `cockpit` are bundles of mods, all on by default; turn individual mods off in the config menu (one boolean `userConfig` field each) and the plugin reloads. Mods are not sandboxed: read the source first. `cockpit` draws into one side pane, `/cockpit`. Both take `palette` (`theme` or `pastel`) and `motion` (`off` keeps animations still).
+`guardrails` and `cockpit` are bundles of mods, all on by default; turn individual mods off in the config menu (one boolean `userConfig` field each) and the plugin reloads, or let `/guardrails:guardrails-setup` and `/cockpit:cockpit-setup` walk you through every option. Mods are not sandboxed: read the source first. `cockpit` draws into one side pane, `/cockpit`. Both take `palette` (`theme` or `pastel`) and `motion` (`off` keeps animations still).
 
 | Bundle | Mods |
 | --- | --- |
