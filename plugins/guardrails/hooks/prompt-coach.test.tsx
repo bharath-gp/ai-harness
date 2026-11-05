@@ -10,7 +10,13 @@ function setup(on: any, sid: { id: string } = { id: 's1' }, held = new Map<strin
   const filled: string[] = []
   const sent: string[] = []
   on('model.complete', (_$: any, e: any) => { if (e.prompt.startsWith('Rewrite the user')) prompts.push(e.prompt); return { value: { isAnswered: true, text: DRAFT, usage } } })
-  on('command.run', () => ({ value: { text: '' } }))
+  const ran: string[] = []
+  on('command.run', (_$: any, e: any) => {
+    if (e.origin?.kind !== 'plugin') return { value: { text: '' } }
+    if (e.command === 'nosuch') throw new Error('no command named /nosuch in this session')
+    ran.push(`/${e.command} ${e.args}`)
+    return { value: { text: '' } }
+  })
   const closed: string[] = []
   on('ui.open', () => ({ value: open }))
   on('ui.close', (_$: any, e: any) => { closed.push(e.id); return { value: undefined } })
@@ -19,11 +25,11 @@ function setup(on: any, sid: { id: string } = { id: 's1' }, held = new Map<strin
   on('session.id', () => ({ value: sid.id }))
   on('session.messages', () => ({ value: last ? [{ role: 'user', text: last, toolUses: [] }] : [] }))
   on('prompt.read', () => ({ value: { text: box, cursor: 0 } }))
-  on('prompt.fill', (_$: any, e: any) => { filled.push(e.text); return { value: { isFilled: true } } })
+  on('prompt.fill', (_$: any, e: any) => { filled.push(e.text); return { isFilled: true } })
   on('state.get', (_$: any, e: any) => ({ value: { value: held.get(e.id), version: held.has(e.id) ? 1 : 0 } }))
   on('state.set', (_$: any, e: any) => { held.set(e.id, e.value); return { value: { isSet: true, version: 1 } } })
   on('prompt.submit', (_$: any, e: any) => { if (e.origin?.kind === 'plugin') sent.push(e.text); return { text: e.text } })
-  return { prompts, filled, sent, held, closed }
+  return { prompts, filled, sent, held, closed, ran }
 }
 const settle = () => new Promise(res => setTimeout(res, 50))
 const submit = async ($: any, text = PROMPT, extra: object = {}) => {
@@ -164,4 +170,42 @@ test('Use Prompt sends the improved prompt as the user', async ($, on) => {
   await settle()
   expect(sent).toEqual([DRAFT])
   expect(filled).toEqual([])
+})
+
+const press = async ($: any, key: string) => {
+  await pane($, 'terminal')
+  await $.ui.press({ plugin: 'guardrails', surface: 'terminal', requestId: 'coach', key })
+  await settle()
+}
+
+test('Use Prompt on a slash first prompt runs the command with the improved text', async ($, on) => {
+  const { sent, ran } = setup(on)
+  await submit($, '/review-pr 42 --strict', { command: { name: 'review-pr', args: '42 --strict' } })
+  await press($, 'use')
+  expect(ran).toEqual([`/review-pr ${DRAFT}`])
+  expect(sent).toEqual([])
+})
+
+test('Dismiss on a slash first prompt runs the original command', async ($, on) => {
+  const { sent, ran } = setup(on)
+  await submit($, '/review-pr 42 --strict', { command: { name: 'review-pr', args: '42 --strict' } })
+  await press($, 'dismiss')
+  expect(ran).toEqual(['/review-pr 42 --strict'])
+  expect(sent).toEqual([])
+})
+
+test('Dismiss on a plain first prompt sends the original as the user', async ($, on) => {
+  const { sent, ran } = setup(on)
+  await submit($)
+  await press($, 'dismiss')
+  expect(sent).toEqual([PROMPT])
+  expect(ran).toEqual([])
+})
+
+test('a slash prompt whose command is unknown goes back in the prompt box', async ($, on) => {
+  const { sent, filled } = setup(on)
+  await submit($, '/nosuch do the thing')
+  await press($, 'dismiss')
+  expect(filled).toEqual(['/nosuch do the thing'])
+  expect(sent).toEqual([])
 })

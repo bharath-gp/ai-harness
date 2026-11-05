@@ -1101,7 +1101,17 @@ async function coachDraft($: any, c: Coach) {
 async function coachClose($: any, text?: string) {
   coach = undefined
   await $.ui.close({ id: 'coach' })
-  if (text) void $.prompt.submit({ text, asUser: true })
+  if (!text) return
+  // The host refuses a $.prompt.submit text that begins with "/": a /command prompt is run with $.command.run instead.
+  const { cmd, rest } = coachSplit(text)
+  if (!cmd) return void $.prompt.submit({ text, asUser: true })
+  try {
+    await $.command.run({ command: cmd.slice(1), args: rest })
+  } catch {
+    // No such command here: hand the text back rather than lose it.
+    await $.prompt.fill({ text })
+    $.ui.toast(`No command ${cmd} here: your prompt is back in the box.`)
+  }
 }
 
 // Sends the improved prompt as the user's own; a held first prompt is replaced by it.
