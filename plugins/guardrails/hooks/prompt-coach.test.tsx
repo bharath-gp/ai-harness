@@ -46,6 +46,7 @@ test('first prompt is held and rewritten, no interview', async ($, on) => {
   expect((await submit($)).drop).toBeDefined()
   expect(prompts).toHaveLength(1)
   expect(prompts[0]).toContain('grill the user')
+  expect(prompts[0]).toContain('cannot find in the repository')
   for (const surface of ['terminal', 'desktop'] as const) {
     const tree = await pane($, surface)
     expect(tree).toContain('grill me about ambiguities')
