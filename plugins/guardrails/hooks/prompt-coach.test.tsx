@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
 const usage = { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }
-const DRAFT = 'Role: senior engineer.\n\nBefore you start: grill me about ambiguities.'
+const DRAFT = 'Stance: change as little as possible.\n\nBefore you start: grill me about ambiguities.'
 const PROMPT = 'Build me a dashboard that shows sales numbers per region please'
 
 // Mocks one session; `sid` is the session id, `held` the host's $.state.
@@ -47,6 +47,7 @@ test('first prompt is held and rewritten, no interview', async ($, on) => {
   expect(prompts).toHaveLength(1)
   expect(prompts[0]).toContain('grill the user')
   expect(prompts[0]).toContain('cannot find in the repository')
+  expect(prompts[0]).toContain('Never a generic persona')
   for (const surface of ['terminal', 'desktop'] as const) {
     const tree = await pane($, surface)
     expect(tree).toContain('grill me about ambiguities')
